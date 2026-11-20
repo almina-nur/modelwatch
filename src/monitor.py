@@ -1,28 +1,33 @@
 """
-ModelWatch - Model İzleme (Model Monitoring) Modülü
-Kayıtlı MLflow modelini yükleyerek üretim verisindeki tahmin ve performans metriklerini izler.
+ModelWatch - Model Izleme (Model Monitoring) Modulu
+Kayitli MLflow modelini yukleyerek uretim verisindeki tahmin ve performans metriklerini izler.
 """
 from datetime import datetime, timezone
+import os
+import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-import mlflow
 
 
 def evaluate_model_monitoring(
     df: pd.DataFrame,
-    model_name: str = "ModelWatch-CustomerSatisfaction",
-    alias: str = "staging",
-    tracking_uri: str = "sqlite:///mlflow.db",
+    model_name: str | None = None,
+    alias: str | None = None,
+    tracking_uri: str | None = None,
     target_col: str = "memnun",
     run_tag: str = "current",
 ) -> dict:
-    """
-    Verilen veri seti üzerinde modeli çalıştırır; tahmin dağılımı ve
-    hedef sütun ('memnun') mevcutsa sınıflandırma metriklerini döndürür.
-    """
-    mlflow.set_tracking_uri(tracking_uri)
-    model_uri = f"models:/{model_name}@{alias}"
+    """Verilen veri seti uzerinde modeli calistirir; tahmin dagilimi ve varsa metrikleri doner."""
+    if df.empty:
+        raise ValueError("Izleme icin verilen veri seti bos olamaz.")
+
+    resolved_name = model_name or os.getenv("MODELWATCH_MODEL_NAME", "ModelWatch-CustomerSatisfaction")
+    resolved_alias = alias or os.getenv("MODELWATCH_MODEL_ALIAS", "staging")
+    resolved_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+
+    mlflow.set_tracking_uri(resolved_uri)
+    model_uri = f"models:/{resolved_name}@{resolved_alias}"
 
     feature_cols = [c for c in df.columns if c != target_col]
     X = df[feature_cols]
@@ -42,6 +47,7 @@ def evaluate_model_monitoring(
             "1": int(np.sum(preds_arr == 1)),
         },
         "metrics": None,
+        "labeled": target_col in df.columns,
     }
 
     if target_col in df.columns:

@@ -1,0 +1,60 @@
+{
+  "run_id": 2,
+  "drift": {
+    "timestamp_utc": "2026-11-20T14:00:00+00:00",
+    "report_tag": "drifted",
+    "reference_rows": 5000,
+    "current_rows": 1000,
+    "dataset_drift": false,
+    "drift_share": 0.25,
+    "drifted_columns_count": 2,
+    "total_columns": 8,
+    "column_drifts": {
+      "gelir": {
+        "drift_detected": true,
+        "drift_score": 0.7421,
+        "stattest_name": "wasserstein"
+      },
+      "aylik_ucret": {
+        "drift_detected": true,
+        "drift_score": 0.7185,
+        "stattest_name": "wasserstein"
+      }
+    },
+    "html_report_path": null,
+    "warning": null
+  },
+  "monitoring": {
+    "timestamp_utc": "2026-11-20T14:00:00+00:00",
+    "run_tag": "drifted",
+    "model_uri": "models:/ModelWatch-CustomerSatisfaction@staging",
+    "n_samples": 1000,
+    "positive_rate": 0.482,
+    "prediction_counts": {
+      "0": 518,
+      "1": 482
+    },
+    "labeled": true,
+    "metrics": {
+      "accuracy": 0.884,
+      "f1": 0.879,
+      "precision": 0.891,
+      "recall": 0.867
+    }
+  },
+  "alerts": {
+    "status": "WARNING",
+    "alert_count": 1,
+    "drifted_columns": [
+      "gelir",
+      "aylik_ucret"
+    ],
+    "alerts": [
+      {
+        "severity": "WARNING",
+        "code": "FEATURE_DRIFT_WARNING",
+        "message": "Ozelliklerde kismi kayma tespit edildi: drift_share=0.2500 (uyari esigi: 0.20)."
+      }
+    ]
+  }
+}
