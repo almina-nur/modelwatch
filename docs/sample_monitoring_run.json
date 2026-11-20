@@ -1,5 +1,5 @@
 {
-  "run_id": 2,
+  "run_id": 1,
   "drift": {
     "timestamp_utc": "2026-11-20T14:00:00+00:00",
     "report_tag": "drifted",
@@ -10,14 +10,44 @@
     "drifted_columns_count": 2,
     "total_columns": 8,
     "column_drifts": {
+      "yas": {
+        "drift_detected": false,
+        "drift_score": 0.032307,
+        "stattest_name": "wasserstein"
+      },
       "gelir": {
         "drift_detected": true,
-        "drift_score": 0.7421,
+        "drift_score": 0.830116,
+        "stattest_name": "wasserstein"
+      },
+      "abonelik_suresi": {
+        "drift_detected": false,
+        "drift_score": 0.041025,
         "stattest_name": "wasserstein"
       },
       "aylik_ucret": {
         "drift_detected": true,
-        "drift_score": 0.7185,
+        "drift_score": 0.728953,
+        "stattest_name": "wasserstein"
+      },
+      "destek_talebi_sayisi": {
+        "drift_detected": false,
+        "drift_score": 0.034339,
+        "stattest_name": "wasserstein"
+      },
+      "son_etkilesim_gun": {
+        "drift_detected": false,
+        "drift_score": 0.034887,
+        "stattest_name": "wasserstein"
+      },
+      "kullanilan_hizmet": {
+        "drift_detected": false,
+        "drift_score": 0.05516,
+        "stattest_name": "wasserstein"
+      },
+      "memnuniyet_skoru": {
+        "drift_detected": false,
+        "drift_score": 0.045759,
         "stattest_name": "wasserstein"
       }
     },
@@ -29,22 +59,24 @@
     "run_tag": "drifted",
     "model_uri": "models:/ModelWatch-CustomerSatisfaction@staging",
     "n_samples": 1000,
-    "positive_rate": 0.482,
+    "positive_rate": 0.582,
     "prediction_counts": {
-      "0": 518,
-      "1": 482
+      "0": 418,
+      "1": 582
     },
-    "labeled": true,
     "metrics": {
-      "accuracy": 0.884,
-      "f1": 0.879,
-      "precision": 0.891,
-      "recall": 0.867
-    }
+      "accuracy": 0.885,
+      "f1": 0.8944,
+      "precision": 0.8368,
+      "recall": 0.9606
+    },
+    "labeled": true
   },
   "alerts": {
+    "timestamp_utc": "2026-11-20T16:55:27.146083+00:00",
+    "report_tag": "drifted",
     "status": "WARNING",
-    "alert_count": 1,
+    "alert_count": 2,
     "drifted_columns": [
       "gelir",
       "aylik_ucret"
@@ -53,7 +85,12 @@
       {
         "severity": "WARNING",
         "code": "FEATURE_DRIFT_WARNING",
-        "message": "Ozelliklerde kismi kayma tespit edildi: drift_share=0.2500 (uyari esigi: 0.20)."
+        "message": "Ozelliklerde kismi kayma tespit edildi: drift_share=0.2500 (uyari esigi: 0.20). Kayan sutunlar: ['gelir', 'aylik_ucret']"
+      },
+      {
+        "severity": "WARNING",
+        "code": "MODEL_ACCURACY_DROP",
+        "message": "Model accuracy skoru beklenen esigin altinda: accuracy=0.8850."
       }
     ]
   }

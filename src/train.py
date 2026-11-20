@@ -1,9 +1,9 @@
-"""
-ModelWatch - Model Egitim ve MLflow Kayit Modulu
-Referans veri uzerinde RandomForestClassifier egitir ve MLflow Registry'ye kaydeder.
-"""
+"""ModelWatch - Model Egitim ve MLflow Kayit Modulu."""
 
+import json
 import os
+import tempfile
+from pathlib import Path
 
 import mlflow
 from mlflow.client import MlflowClient
@@ -24,7 +24,7 @@ def train_and_register_model(
     random_state: int = 42,
     target_col: str = "memnun",
 ) -> dict:
-    """Egitim verisiyle model egitir, baseline metriklerini loglar ve alias atar."""
+    """Model egitir, baseline metrikleri ve referans veriyi artifact kaydeder ve alias atar."""
     resolved_uri = tracking_uri or os.getenv(
         "MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"
     )
@@ -39,7 +39,6 @@ def train_and_register_model(
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=random_state, stratify=y
     )
-
     model_params = {
         "n_estimators": n_estimators,
         "max_depth": max_depth,
@@ -53,13 +52,11 @@ def train_and_register_model(
         "random_state": random_state,
         "model_type": "RandomForestClassifier",
     }
-
     clf = RandomForestClassifier(**model_params)
 
     with mlflow.start_run(run_name="rf_baseline_train") as run:
         clf.fit(X_train, y_train)
         val_preds = clf.predict(X_val)
-
         metrics = {
             "val_accuracy": round(float(accuracy_score(y_val, val_preds)), 4),
             "val_f1": round(float(f1_score(y_val, val_preds, zero_division=0)), 4),
@@ -69,9 +66,19 @@ def train_and_register_model(
             "val_recall": round(
                 float(recall_score(y_val, val_preds, zero_division=0)), 4
             ),
+            "baseline_positive_rate": round(float(y.mean()), 4),
         }
         mlflow.log_params(logged_params)
         mlflow.log_metrics(metrics)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            ref_csv = tmp_path / "reference_data.csv"
+            df.to_csv(ref_csv, index=False)
+            mlflow.log_artifact(str(ref_csv), artifact_path="reference")
+            baseline_json = tmp_path / "baseline_metrics.json"
+            baseline_json.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+            mlflow.log_artifact(str(baseline_json), artifact_path="reference")
 
         model_info = mlflow.sklearn.log_model(
             sk_model=clf,
@@ -79,14 +86,12 @@ def train_and_register_model(
             registered_model_name=model_name,
             skops_trusted_types=["sklearn.tree._tree.Tree"],
         )
-
         client = MlflowClient(tracking_uri=resolved_uri)
         client.set_registered_model_alias(
             name=model_name,
             alias=alias,
             version=str(model_info.registered_model_version),
         )
-
         return {
             "run_id": run.info.run_id,
             "model_name": model_name,

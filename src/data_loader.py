@@ -1,12 +1,11 @@
-"""
-ModelWatch - Veri Yukleme ve Simulasyon Modulu
-Egitim/referans verisi ile uretim verisini ayri bolum/orneklemle ve veri sizintisi olmadan uretir.
-"""
+"""ModelWatch - Veri Yukleme ve Simulasyon Modulu."""
 
 import numpy as np
 import pandas as pd
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
+
+SPLIT_SEED = 42
 
 FEATURE_NAMES = [
     "yas",
@@ -20,7 +19,7 @@ FEATURE_NAMES = [
 ]
 
 
-def _base_population(n_total: int = 10000, seed: int = 42) -> pd.DataFrame:
+def _base_population(n_total: int = 10000, seed: int = SPLIT_SEED) -> pd.DataFrame:
     X, y = make_classification(
         n_samples=n_total,
         n_features=8,
@@ -35,13 +34,12 @@ def _base_population(n_total: int = 10000, seed: int = 42) -> pd.DataFrame:
 
 
 def generate_training_data(
-    n_samples: int = 5000,
-    random_state: int = 42,
+    n_samples: int = 5000, random_state: int = 42
 ) -> pd.DataFrame:
-    """Referans / egitim veri setini uretim havuzundan ayri bir bolum olarak uretir."""
-    pop = _base_population(n_total=10000, seed=42)
+    """Referans / egitim veri setini uretim havuzundan ayri bolum olarak uretir."""
+    pop = _base_population(n_total=10000, seed=SPLIT_SEED)
     train_pool, _ = train_test_split(
-        pop, test_size=0.4, random_state=random_state, stratify=pop["memnun"]
+        pop, test_size=0.4, random_state=SPLIT_SEED, stratify=pop["memnun"]
     )
     rng = np.random.default_rng(random_state)
     replace = n_samples > len(train_pool)
@@ -50,27 +48,20 @@ def generate_training_data(
 
 
 def generate_production_data(
-    n_samples: int = 1000,
-    drift: bool = False,
-    random_state: int = 101,
+    n_samples: int = 1000, drift: bool = False, random_state: int = 101
 ) -> pd.DataFrame:
-    """
-    Egitim bolumunden bagimsiz ayri havuzdan uretim veri seti uretir.
-    drift=True oldugunda gelir ve aylik ucret dagilimlarinda kayma simule edilir.
-    """
-    pop = _base_population(n_total=10000, seed=42)
+    """Egitim bolumunden bagimsiz ayri havuzdan uretim veri seti uretir."""
+    pop = _base_population(n_total=10000, seed=SPLIT_SEED)
     _, prod_pool = train_test_split(
-        pop, test_size=0.4, random_state=42, stratify=pop["memnun"]
+        pop, test_size=0.4, random_state=SPLIT_SEED, stratify=pop["memnun"]
     )
     rng = np.random.default_rng(random_state)
     replace = n_samples > len(prod_pool)
     idx = rng.choice(len(prod_pool), size=n_samples, replace=replace)
     df = prod_pool.iloc[idx].reset_index(drop=True).copy()
-
     if drift:
         df["gelir"] = df["gelir"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
         df["aylik_ucret"] = (
             df["aylik_ucret"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
         )
-
     return df

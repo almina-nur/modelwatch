@@ -1,59 +1,48 @@
-
 # ModelWatch
 
-Veri kayması (*data drift*) analizi, MLflow kayıtlı model izleme, seviyeli uyarı üretimi, SQLite geçmiş kaydı ve FastAPI tahmin/izleme uçları sunan MLOps izleme servisi.
+[![ModelWatch CI](https://github.com/almina-nur/modelwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/almina-nur/modelwatch/actions/workflows/ci.yml)
 
-> **Veri Notu:** Varsayılan `src/data_loader.py` akışı sentetik veri üretir. Gerçek veya dış üretim kayıtları `/monitor/run` isteğindeki `records` alanı üzerinden gönderilebilir.
+**FastAPI**, **MLflow**, **Evidently**, **scikit-learn**, **SQLite**, **Docker** ve **GitHub Actions** ile geliştirilmiş makine öğrenmesi izleme, veri kayması analizi, alarm üretimi ve çıkarım servisi.
 
-## Mimari
+> **Veri Notu:** Varsayılan `src/data_loader.py` akışı sentetik veri üretir. Gerçek kayıtlar `/monitor/run` isteğindeki `records` alanı üzerinden gönderilebilir.
+
+## Mimari Akış
 
 ```mermaid
 flowchart LR
-  Data["Veri & Kayıtlar\n(data_loader / API)"] --> Drift["Drift Analizi\n(Evidently · Wasserstein)"]
-  Data --> Monitor["Model İzleme\n(MLflow Registry)"]
-  Drift --> Alerts["Uyarı Motoru\n(alerts + integrations)"]
-  Monitor --> Alerts
-  Alerts --> Store["Geçmiş Kaydı\n(SQLite)"]
-  Store --> API["FastAPI Servisi\n(/predict · /monitor · /history)"]
-
+    subgraph TRAIN["Eğitim"]
+        DL[data_loader.py] --> TR[train.py] --> MLF[(MLflow @staging)]
+    end
+    subgraph API["FastAPI Servisi"]
+        PR["POST /predict"] --> MLF --> OUT[Tahmin]
+        MR["POST /monitor/run"] --> DR[drift.py] & MN[monitor.py] --> AL[alerts.py] --> DB[(SQLite)]
+        AL -.-> IN[integrations.py]
+        HR["GET /monitor/history"] --> DB
+    end
+    subgraph CI["CI"]
+        CT[train] --> PT[pytest -v]
+    end
 ```
 
-## Modüller
+## API Uç Noktaları
 
-* **`src/drift.py`**: Referans ve üretim verisi arasındaki dağılım değişimini Evidently ile ölçer.
-* **`src/train.py` & `src/monitor.py**`: Modeli eğitip MLflow Registry'ye kaydeder; alias üzerinden yüklenen modelin tahmin ve performans metriklerini izler.
-* **`src/alerts.py` & `src/integrations.py**`: Kayma ve metrik durumuna göre uyarı seviyeleri üretir; isteğe bağlı webhook ve JSON log bildirimi gönderir.
-* **`src/storage.py`**: İzleme çalıştırmalarını ve uyarı özetlerini SQLite veritabanında saklar.
-* **`api/main.py`**: `/predict`, `/monitor/run` ve `/monitor/history` uçlarını sunar.
-
-## Ortam Değişkenleri
-
-| Değişken | Varsayılan | Açıklama |
+| Metot | Uç Nokta | Açıklama |
 | --- | --- | --- |
-| `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | MLflow tracking ve registry URI'si |
-| `MODELWATCH_MODEL_NAME` | `ModelWatch-CustomerSatisfaction` | Kayıtlı MLflow model adı |
-| `MODELWATCH_MODEL_ALIAS` | `staging` | Kullanılacak model alias'ı |
-| `MODELWATCH_HISTORY_DB` | `data/modelwatch_history.db` | SQLite geçmiş veritabanı yolu |
-| `MODELWATCH_WEBHOOK_URL` | *(opsiyonel)* | Alarm webhook hedef URL'si |
+| `GET` | `/health` | Servis sağlık durumu (`200` hazır, `503` model hazır değilse) |
+| `POST` | `/predict` | `@staging` modeli ile tekil tahmin |
+| `POST` | `/monitor/run` | Drift analizi, model izleme, alarm, bildirim ve SQLite kaydı |
+| `GET` | `/monitor/history?limit=10` | Son izleme koşularını getirir |
 
-## Kurulum, Test ve Çalıştırma
-
-```bash
-pip install -e ".[dev]"
-python -m src.train
-uvicorn api.main:app --reload
-ruff check src api tests && ruff format --check src api tests && pytest -v
-
-```
-
-## Docker
+### Örnek `/monitor/run` İsteği
 
 ```bash
-docker build -t modelwatch:latest .
-docker run --rm -p 8000:8000 modelwatch:latest
-
+curl -X POST "http://localhost:8000/monitor/run" -H "Content-Type: application/json" -d '{"n_samples": 1000, "drift": true, "random_state": 7, "save_html": false}'
 ```
 
-Örnek izleme çıktısı için `docs/sample_monitoring_run.json` ve lisans için [MIT Lisansı](https://www.google.com/search?q=LICENSE) dosyasına bakabilirsiniz.
+## Mühendislik Notları ve Sınırlamalar
 
-```
+- **Bağımlılık Sabitleme:** `pandas<3.0` ve `mlflow>=3.0` ile uyumluluk korunur; tek bağımlılık kaynağı `pyproject.toml` dosyasıdır.
+- **Küçük Örneklem Hassasiyeti:** Düşük `n_samples` değerlerinde Wasserstein mesafesi örnekleme varyansı nedeniyle daha hassas davranabilir.
+- **Kalıcılık ve Güvenlik:** SQLite yerel geliştirme içindir; üretimde PostgreSQL ve kimlik doğrulama eklenmelidir.
+
+Örnek çıktı için `docs/sample_monitoring_run.json` ve lisans için [MIT Lisansı](./LICENSE) dosyasına bakabilirsiniz.

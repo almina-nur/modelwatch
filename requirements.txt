@@ -4,7 +4,7 @@ pydantic
 pandas<3.0
 numpy
 scikit-learn
-mlflow
+mlflow>=3.0
 evidently==0.7.23
 pytest
 httpx

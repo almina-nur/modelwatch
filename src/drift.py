@@ -1,7 +1,4 @@
-"""
-ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu
-Referans veri ile uretim verisi arasindaki dagilim degisimini Evidently 0.7.23 ile olcer.
-"""
+"""ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu."""
 
 import warnings
 from datetime import datetime, timezone
@@ -67,14 +64,9 @@ def run_drift_analysis(
         if pd.api.types.is_numeric_dtype(ref_features[col])
     ]
     wasserstein_metrics = [
-        ValueDrift(
-            column=col,
-            method="wasserstein",
-            threshold=wasserstein_threshold,
-        )
+        ValueDrift(column=col, method="wasserstein", threshold=wasserstein_threshold)
         for col in numeric_cols
     ]
-
     report = Report(
         metrics=[
             DataDriftPreset(),
@@ -83,30 +75,17 @@ def run_drift_analysis(
         ]
     )
     snapshot = report.run(reference_data=ref_features, current_data=curr_features)
-
     snap_dict = snapshot.dict() if hasattr(snapshot, "dict") else {}
     metrics_list = snap_dict.get("metrics", [])
-
-    drift_share = None
-    drifted_columns_count = None
-    dataset_drift = None
     column_drifts: dict[str, dict] = {}
 
     for metric in metrics_list:
         if not isinstance(metric, dict):
             continue
-
         metric_name = str(metric.get("metric_name", ""))
         config = metric.get("config", {}) or {}
         value = metric.get("value")
-
-        if metric_name.startswith("DriftedColumnsCount") and isinstance(value, dict):
-            if value.get("count") is not None:
-                drifted_columns_count = int(float(value["count"]))
-            if value.get("share") is not None:
-                drift_share = float(value["share"])
-
-        elif metric_name.startswith("ValueDrift") and isinstance(config, dict):
+        if metric_name.startswith("ValueDrift") and isinstance(config, dict):
             col_name = config.get("column")
             threshold = float(config.get("threshold", wasserstein_threshold))
             stattest_name = str(config.get("method", "wasserstein"))
@@ -116,7 +95,6 @@ def run_drift_analysis(
                     "p_value" in stattest_name.lower() or "k-s" in stattest_name.lower()
                 )
                 detected = (score < threshold) if is_pvalue else (score >= threshold)
-                # Acik ekledigimiz wasserstein metrigi oncelikli olsun
                 if (
                     str(col_name) not in column_drifts
                     or "wasserstein" in stattest_name.lower()
@@ -127,18 +105,16 @@ def run_drift_analysis(
                         "stattest_name": stattest_name,
                     }
 
-    if drifted_columns_count is None and column_drifts:
-        drifted_columns_count = sum(
-            1 for info in column_drifts.values() if info["drift_detected"]
-        )
-    if (
-        drift_share is None
-        and drifted_columns_count is not None
-        and len(ref_features.columns) > 0
-    ):
-        drift_share = drifted_columns_count / len(ref_features.columns)
-    if drift_share is not None:
-        dataset_drift = bool(float(drift_share) >= float(drift_share_threshold))
+    total_cols = len(ref_features.columns)
+    drifted_columns_count = sum(
+        1 for info in column_drifts.values() if info["drift_detected"]
+    )
+    drift_share = (
+        round(float(drifted_columns_count) / float(total_cols), 4)
+        if total_cols > 0
+        else 0.0
+    )
+    dataset_drift = bool(float(drift_share) >= float(drift_share_threshold))
 
     html_report_path = None
     if save_html and hasattr(snapshot, "save_html"):
@@ -155,11 +131,9 @@ def run_drift_analysis(
         "reference_rows": len(ref_features),
         "current_rows": len(curr_features),
         "dataset_drift": dataset_drift,
-        "drift_share": round(float(drift_share), 4)
-        if drift_share is not None
-        else None,
+        "drift_share": drift_share,
         "drifted_columns_count": drifted_columns_count,
-        "total_columns": len(ref_features.columns),
+        "total_columns": total_cols,
         "column_drifts": column_drifts,
         "html_report_path": html_report_path,
         "warning": sample_warning,
