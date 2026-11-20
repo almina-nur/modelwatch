@@ -7,3 +7,4 @@ reports/
 data/*.db
 mlruns/
 .env
+.coverage
