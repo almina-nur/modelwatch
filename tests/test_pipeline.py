@@ -304,3 +304,46 @@ def test_fastapi_endpoints_auth_and_negative_cases(isolated_env, monkeypatch):
     hist_resp = client.get("/monitor/history?limit=3")
     assert hist_resp.status_code == 200
     assert hist_resp.json()["count"] >= 1
+
+
+def test_drift_missing_column_and_html_report(tmp_path):
+    from pathlib import Path
+
+    from src.data_loader import generate_production_data, generate_training_data
+    from src.drift import run_drift_analysis
+
+    ref_df = generate_training_data(n_samples=300, random_state=42)
+    curr_df = generate_production_data(n_samples=260, drift=False, random_state=101)
+
+    html_res = run_drift_analysis(
+        ref_df,
+        curr_df,
+        output_dir=str(tmp_path),
+        save_html=True,
+        report_tag="html_check",
+    )
+    assert html_res["html_report_path"] is not None
+    assert Path(html_res["html_report_path"]).exists()
+
+    broken_curr = curr_df.drop(columns=["gelir"])
+    with pytest.raises(ValueError, match="eksik özellik"):
+        run_drift_analysis(
+            ref_df,
+            broken_curr,
+            output_dir=str(tmp_path),
+            save_html=False,
+            report_tag="missing_col",
+        )
+
+
+def test_webhook_notification_unreachable_error():
+    from src.integrations import emit_alert_notifications
+
+    res = emit_alert_notifications(
+        {"status": "CRITICAL", "alert_count": 2, "alerts": []},
+        webhook_url="http://127.0.0.1:9/unreachable",
+        timeout_seconds=0.5,
+    )
+    assert res["webhook_configured"] is True
+    assert res["webhook_sent"] is False
+    assert res["webhook_error"] is not None
