@@ -2,6 +2,7 @@
 ModelWatch - FastAPI Izleme ve Tahmin Servisi
 Veri kaymasi analizi, model izleme, uyari uretimi, gecmis kaydi ve tahmin uclari sunar.
 """
+
 import os
 
 import mlflow

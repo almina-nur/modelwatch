@@ -2,6 +2,7 @@
 ModelWatch - Model Egitim ve MLflow Kayit Modulu
 Referans veri uzerinde RandomForestClassifier egitir ve MLflow Registry'ye kaydeder.
 """
+
 import os
 
 import mlflow
@@ -24,7 +25,9 @@ def train_and_register_model(
     target_col: str = "memnun",
 ) -> dict:
     """Egitim verisiyle model egitir, baseline metriklerini loglar ve alias atar."""
-    resolved_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+    resolved_uri = tracking_uri or os.getenv(
+        "MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"
+    )
     mlflow.set_tracking_uri(resolved_uri)
     mlflow.set_experiment("modelwatch_customer_satisfaction")
 
@@ -60,8 +63,12 @@ def train_and_register_model(
         metrics = {
             "val_accuracy": round(float(accuracy_score(y_val, val_preds)), 4),
             "val_f1": round(float(f1_score(y_val, val_preds, zero_division=0)), 4),
-            "val_precision": round(float(precision_score(y_val, val_preds, zero_division=0)), 4),
-            "val_recall": round(float(recall_score(y_val, val_preds, zero_division=0)), 4),
+            "val_precision": round(
+                float(precision_score(y_val, val_preds, zero_division=0)), 4
+            ),
+            "val_recall": round(
+                float(recall_score(y_val, val_preds, zero_division=0)), 4
+            ),
         }
         mlflow.log_params(logged_params)
         mlflow.log_metrics(metrics)

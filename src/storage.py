@@ -2,6 +2,7 @@
 ModelWatch - Kalıcı İzleme Geçmişi Modülü
 Her izleme koşusunu SQLite veritabanına kaydeder ve geçmiş kayıtları sorgular.
 """
+
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -55,13 +56,17 @@ def save_monitoring_run(
     ]
 
     dataset_drift_raw = (drift_result or {}).get("dataset_drift")
-    dataset_drift_int = None if dataset_drift_raw is None else int(bool(dataset_drift_raw))
+    dataset_drift_int = (
+        None if dataset_drift_raw is None else int(bool(dataset_drift_raw))
+    )
 
     row = (
         (monitoring_result or {}).get("timestamp_utc")
         or (drift_result or {}).get("timestamp_utc")
         or datetime.now(timezone.utc).isoformat(),
-        (drift_result or {}).get("report_tag") or (monitoring_result or {}).get("run_tag") or "run",
+        (drift_result or {}).get("report_tag")
+        or (monitoring_result or {}).get("run_tag")
+        or "run",
         (monitoring_result or {}).get("n_samples"),
         dataset_drift_int,
         (drift_result or {}).get("drift_share"),
@@ -118,7 +123,9 @@ def get_monitoring_history(
                 "created_at_utc": r["created_at_utc"],
                 "report_tag": r["report_tag"],
                 "n_samples": r["n_samples"],
-                "dataset_drift": None if r["dataset_drift"] is None else bool(r["dataset_drift"]),
+                "dataset_drift": None
+                if r["dataset_drift"] is None
+                else bool(r["dataset_drift"]),
                 "drift_share": r["drift_share"],
                 "drifted_columns": json.loads(r["drifted_columns_json"] or "[]"),
                 "metrics": {

@@ -2,6 +2,7 @@
 ModelWatch - Model Izleme (Model Monitoring) Modulu
 Kayitli MLflow modelini yukleyerek uretim verisindeki tahmin ve performans metriklerini izler.
 """
+
 import os
 from datetime import datetime, timezone
 
@@ -23,9 +24,13 @@ def evaluate_model_monitoring(
     if df.empty:
         raise ValueError("Izleme icin verilen veri seti bos olamaz.")
 
-    resolved_name = model_name or os.getenv("MODELWATCH_MODEL_NAME", "ModelWatch-CustomerSatisfaction")
+    resolved_name = model_name or os.getenv(
+        "MODELWATCH_MODEL_NAME", "ModelWatch-CustomerSatisfaction"
+    )
     resolved_alias = alias or os.getenv("MODELWATCH_MODEL_ALIAS", "staging")
-    resolved_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+    resolved_uri = tracking_uri or os.getenv(
+        "MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"
+    )
 
     mlflow.set_tracking_uri(resolved_uri)
     model_uri = f"models:/{resolved_name}@{resolved_alias}"
@@ -56,7 +61,9 @@ def evaluate_model_monitoring(
         result["metrics"] = {
             "accuracy": round(float(accuracy_score(y_true, preds_arr)), 4),
             "f1": round(float(f1_score(y_true, preds_arr, zero_division=0)), 4),
-            "precision": round(float(precision_score(y_true, preds_arr, zero_division=0)), 4),
+            "precision": round(
+                float(precision_score(y_true, preds_arr, zero_division=0)), 4
+            ),
             "recall": round(float(recall_score(y_true, preds_arr, zero_division=0)), 4),
         }
 

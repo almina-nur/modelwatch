@@ -2,6 +2,7 @@
 ModelWatch - Otomatik Test Paketi (pytest)
 Veri simülasyonu, drift analizi, model izleme, alarm kuralları, SQLite geçmişi ve FastAPI uçlarını test eder.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,7 +25,11 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("MLFLOW_TRACKING_URI", tracking_uri)
     monkeypatch.setenv("MODELWATCH_HISTORY_DB", history_db)
     api_main._model_cache.clear()
-    return {"tmp_path": tmp_path, "tracking_uri": tracking_uri, "history_db": history_db}
+    return {
+        "tmp_path": tmp_path,
+        "tracking_uri": tracking_uri,
+        "history_db": history_db,
+    }
 
 
 def test_data_loader_schema_and_drift():
@@ -49,10 +54,18 @@ def test_drift_detection_no_drift_vs_drifted(tmp_path):
     drifted_df = generate_production_data(n_samples=800, drift=True, random_state=101)
 
     res_clean = run_drift_analysis(
-        ref_df, clean_df, output_dir=str(tmp_path), save_html=False, report_tag="test_clean"
+        ref_df,
+        clean_df,
+        output_dir=str(tmp_path),
+        save_html=False,
+        report_tag="test_clean",
     )
     res_drift = run_drift_analysis(
-        ref_df, drifted_df, output_dir=str(tmp_path), save_html=False, report_tag="test_drift"
+        ref_df,
+        drifted_df,
+        output_dir=str(tmp_path),
+        save_html=False,
+        report_tag="test_drift",
     )
 
     assert res_clean["total_columns"] == 8
@@ -128,12 +141,19 @@ def test_alert_severity_levels():
     assert crit_alert["alert_count"] >= 2
 
     unlabeled_shift_alert = generate_alerts(
-        drift_result={"report_tag": "unlabeled_run", "drift_share": 0.0, "column_drifts": {}},
+        drift_result={
+            "report_tag": "unlabeled_run",
+            "drift_share": 0.0,
+            "column_drifts": {},
+        },
         monitoring_result={"metrics": None, "positive_rate": 0.85},
         baseline_positive_rate=0.50,
     )
     assert unlabeled_shift_alert["status"] == "WARNING"
-    assert any(a["code"] == "PREDICTION_DISTRIBUTION_SHIFT" for a in unlabeled_shift_alert["alerts"])
+    assert any(
+        a["code"] == "PREDICTION_DISTRIBUTION_SHIFT"
+        for a in unlabeled_shift_alert["alerts"]
+    )
 
 
 def test_storage_roundtrip(tmp_path):
@@ -149,12 +169,23 @@ def test_storage_roundtrip(tmp_path):
         monitoring_result={
             "n_samples": 250,
             "positive_rate": 0.51,
-            "metrics": {"accuracy": 0.94, "f1": 0.94, "precision": 0.93, "recall": 0.95},
+            "metrics": {
+                "accuracy": 0.94,
+                "f1": 0.94,
+                "precision": 0.93,
+                "recall": 0.95,
+            },
         },
         alert_result={
             "status": "WARNING",
             "alert_count": 1,
-            "alerts": [{"severity": "WARNING", "code": "FEATURE_DRIFT_WARNING", "message": "test"}],
+            "alerts": [
+                {
+                    "severity": "WARNING",
+                    "code": "FEATURE_DRIFT_WARNING",
+                    "message": "test",
+                }
+            ],
         },
         db_path=db_file,
     )
@@ -169,7 +200,9 @@ def test_fastapi_endpoints_and_negative_cases(isolated_env, monkeypatch):
     from src.train import train_and_register_model
 
     # Model yokken /predict 503 donmeli
-    monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{isolated_env['tmp_path'] / 'empty.db'}")
+    monkeypatch.setenv(
+        "MLFLOW_TRACKING_URI", f"sqlite:///{isolated_env['tmp_path'] / 'empty.db'}"
+    )
     client = TestClient(api_main.app)
 
     missing_pred = client.post(
@@ -219,9 +252,9 @@ def test_fastapi_endpoints_and_negative_cases(isolated_env, monkeypatch):
     empty_records_resp = client.post("/monitor/run", json={"records": []})
     assert empty_records_resp.status_code == 422
 
-    live_records = generate_production_data(n_samples=120, drift=True, random_state=101).to_dict(
-        orient="records"
-    )
+    live_records = generate_production_data(
+        n_samples=120, drift=True, random_state=101
+    ).to_dict(orient="records")
     live_resp = client.post(
         "/monitor/run",
         json={"records": live_records, "save_html": False, "report_tag": "live_test"},

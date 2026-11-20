@@ -2,6 +2,7 @@
 ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu
 Referans veri ile uretim verisi arasindaki dagilim degisimini Evidently 0.7.23 ile olcer.
 """
+
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,25 +31,40 @@ def run_drift_analysis(
         raise ValueError("Referans ve guncel veri setleri bos olamaz.")
 
     sample_warning = None
-    if len(reference_df) < MIN_RECOMMENDED_ROWS or len(current_df) < MIN_RECOMMENDED_ROWS:
+    if (
+        len(reference_df) < MIN_RECOMMENDED_ROWS
+        or len(current_df) < MIN_RECOMMENDED_ROWS
+    ):
         sample_warning = (
             f"Kucuk orneklem boyutu (ref={len(reference_df)}, curr={len(current_df)}); "
             f"onerilen alt sinir {MIN_RECOMMENDED_ROWS}."
         )
         warnings.warn(sample_warning, UserWarning, stacklevel=2)
 
-    drop_cols = [col for col in ["memnun"] if col in reference_df.columns or col in current_df.columns]
-    ref_features = reference_df.drop(columns=[c for c in drop_cols if c in reference_df.columns])
-    curr_features = current_df.drop(columns=[c for c in drop_cols if c in current_df.columns])
+    drop_cols = [
+        col
+        for col in ["memnun"]
+        if col in reference_df.columns or col in current_df.columns
+    ]
+    ref_features = reference_df.drop(
+        columns=[c for c in drop_cols if c in reference_df.columns]
+    )
+    curr_features = current_df.drop(
+        columns=[c for c in drop_cols if c in current_df.columns]
+    )
 
     if list(ref_features.columns) != list(curr_features.columns):
         missing_in_curr = set(ref_features.columns) - set(curr_features.columns)
         if missing_in_curr:
-            raise ValueError(f"Guncel veride eksik ozellik sutunlari: {sorted(missing_in_curr)}")
+            raise ValueError(
+                f"Guncel veride eksik ozellik sutunlari: {sorted(missing_in_curr)}"
+            )
         curr_features = curr_features[ref_features.columns]
 
     numeric_cols = [
-        col for col in ref_features.columns if pd.api.types.is_numeric_dtype(ref_features[col])
+        col
+        for col in ref_features.columns
+        if pd.api.types.is_numeric_dtype(ref_features[col])
     ]
     wasserstein_metrics = [
         ValueDrift(
@@ -96,10 +112,15 @@ def run_drift_analysis(
             stattest_name = str(config.get("method", "wasserstein"))
             if col_name is not None and value is not None:
                 score = float(value)
-                is_pvalue = "p_value" in stattest_name.lower() or "k-s" in stattest_name.lower()
+                is_pvalue = (
+                    "p_value" in stattest_name.lower() or "k-s" in stattest_name.lower()
+                )
                 detected = (score < threshold) if is_pvalue else (score >= threshold)
                 # Acik ekledigimiz wasserstein metrigi oncelikli olsun
-                if str(col_name) not in column_drifts or "wasserstein" in stattest_name.lower():
+                if (
+                    str(col_name) not in column_drifts
+                    or "wasserstein" in stattest_name.lower()
+                ):
                     column_drifts[str(col_name)] = {
                         "drift_detected": bool(detected),
                         "drift_score": round(score, 6),
@@ -107,8 +128,14 @@ def run_drift_analysis(
                     }
 
     if drifted_columns_count is None and column_drifts:
-        drifted_columns_count = sum(1 for info in column_drifts.values() if info["drift_detected"])
-    if drift_share is None and drifted_columns_count is not None and len(ref_features.columns) > 0:
+        drifted_columns_count = sum(
+            1 for info in column_drifts.values() if info["drift_detected"]
+        )
+    if (
+        drift_share is None
+        and drifted_columns_count is not None
+        and len(ref_features.columns) > 0
+    ):
         drift_share = drifted_columns_count / len(ref_features.columns)
     if drift_share is not None:
         dataset_drift = bool(float(drift_share) >= float(drift_share_threshold))
@@ -128,7 +155,9 @@ def run_drift_analysis(
         "reference_rows": len(ref_features),
         "current_rows": len(curr_features),
         "dataset_drift": dataset_drift,
-        "drift_share": round(float(drift_share), 4) if drift_share is not None else None,
+        "drift_share": round(float(drift_share), 4)
+        if drift_share is not None
+        else None,
         "drifted_columns_count": drifted_columns_count,
         "total_columns": len(ref_features.columns),
         "column_drifts": column_drifts,

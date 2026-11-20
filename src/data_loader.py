@@ -2,6 +2,7 @@
 ModelWatch - Veri Yukleme ve Simulasyon Modulu
 Egitim/referans verisi ile uretim verisini ayri bolum/orneklemle ve veri sizintisi olmadan uretir.
 """
+
 import numpy as np
 import pandas as pd
 from sklearn.datasets import make_classification
@@ -39,7 +40,9 @@ def generate_training_data(
 ) -> pd.DataFrame:
     """Referans / egitim veri setini uretim havuzundan ayri bir bolum olarak uretir."""
     pop = _base_population(n_total=10000, seed=42)
-    train_pool, _ = train_test_split(pop, test_size=0.4, random_state=random_state, stratify=pop["memnun"])
+    train_pool, _ = train_test_split(
+        pop, test_size=0.4, random_state=random_state, stratify=pop["memnun"]
+    )
     rng = np.random.default_rng(random_state)
     replace = n_samples > len(train_pool)
     idx = rng.choice(len(train_pool), size=n_samples, replace=replace)
@@ -56,7 +59,9 @@ def generate_production_data(
     drift=True oldugunda gelir ve aylik ucret dagilimlarinda kayma simule edilir.
     """
     pop = _base_population(n_total=10000, seed=42)
-    _, prod_pool = train_test_split(pop, test_size=0.4, random_state=42, stratify=pop["memnun"])
+    _, prod_pool = train_test_split(
+        pop, test_size=0.4, random_state=42, stratify=pop["memnun"]
+    )
     rng = np.random.default_rng(random_state)
     replace = n_samples > len(prod_pool)
     idx = rng.choice(len(prod_pool), size=n_samples, replace=replace)
@@ -64,6 +69,8 @@ def generate_production_data(
 
     if drift:
         df["gelir"] = df["gelir"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
-        df["aylik_ucret"] = df["aylik_ucret"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
+        df["aylik_ucret"] = (
+            df["aylik_ucret"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
+        )
 
     return df

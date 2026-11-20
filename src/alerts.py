@@ -2,6 +2,7 @@
 ModelWatch - Uyari Sistemi (Alert System) Modulu
 Drift, model performansi ve etiketsiz tahmin dagilimi kaymalarina gore seviyelendirilmis alarm uretir.
 """
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -31,7 +32,9 @@ def generate_alerts(
 
     drift_share = drift_result.get("drift_share")
     column_drifts = drift_result.get("column_drifts") or {}
-    drifted_cols = [col for col, info in column_drifts.items() if info.get("drift_detected")]
+    drifted_cols = [
+        col for col, info in column_drifts.items() if info.get("drift_detected")
+    ]
 
     # 1. Veri kaymasi orani (tek kaynak: drift_share)
     if drift_share is not None:
@@ -66,8 +69,12 @@ def generate_alerts(
         if isinstance(metrics, dict):
             f1_val = metrics.get("f1")
             acc_val = metrics.get("accuracy")
-            base_f1 = (baseline_metrics or {}).get("val_f1") or (baseline_metrics or {}).get("f1")
-            base_acc = (baseline_metrics or {}).get("val_accuracy") or (baseline_metrics or {}).get("accuracy")
+            base_f1 = (baseline_metrics or {}).get("val_f1") or (
+                baseline_metrics or {}
+            ).get("f1")
+            base_acc = (baseline_metrics or {}).get("val_accuracy") or (
+                baseline_metrics or {}
+            ).get("accuracy")
 
             # F1 ve Accuracy ayni anda bozulduysa tek performans bozulmasi olarak raporla
             f1_bad = False
