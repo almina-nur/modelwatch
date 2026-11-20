@@ -80,3 +80,7 @@ def train_and_register_model(
             "alias": alias,
             "val_metrics": metrics,
         }
+
+if __name__ == "__main__":
+    result = train_and_register_model()
+    print("Registered model:", result)
