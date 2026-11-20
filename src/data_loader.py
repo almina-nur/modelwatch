@@ -1,10 +1,11 @@
 """
-ModelWatch - Veri Yükleme ve Simülasyon Modülü
-Müşteri memnuniyeti tahmini için referans ve üretim verisi üretir.
+ModelWatch - Veri Yukleme ve Simulasyon Modulu
+Egitim/referans verisi ile uretim verisini ayri bolum/orneklemle ve veri sizintisi olmadan uretir.
 """
 import numpy as np
 import pandas as pd
 from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
 
 FEATURE_NAMES = [
     "yas",
@@ -18,40 +19,48 @@ FEATURE_NAMES = [
 ]
 
 
-def generate_training_data(
-    n_samples: int = 5000,
-    random_state: int = 42,
-) -> pd.DataFrame:
-    """Referans / eğitim veri seti üretir."""
+def _base_population(n_total: int = 10000, seed: int = 42) -> pd.DataFrame:
     X, y = make_classification(
-        n_samples=n_samples,
+        n_samples=n_total,
         n_features=8,
         n_informative=6,
         n_redundant=1,
         n_classes=2,
-        random_state=random_state,
+        random_state=seed,
     )
     df = pd.DataFrame(X, columns=FEATURE_NAMES)
     df["memnun"] = y
     return df
 
 
+def generate_training_data(
+    n_samples: int = 5000,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """Referans / egitim veri setini uretim havuzundan ayri bir bolum olarak uretir."""
+    pop = _base_population(n_total=10000, seed=42)
+    train_pool, _ = train_test_split(pop, test_size=0.4, random_state=random_state, stratify=pop["memnun"])
+    rng = np.random.default_rng(random_state)
+    replace = n_samples > len(train_pool)
+    idx = rng.choice(len(train_pool), size=n_samples, replace=replace)
+    return train_pool.iloc[idx].reset_index(drop=True).copy()
+
+
 def generate_production_data(
     n_samples: int = 1000,
     drift: bool = False,
-    random_state: int = 42,
+    random_state: int = 101,
 ) -> pd.DataFrame:
     """
-    Üretim veri seti üretir.
-    drift=False olduğunda referans dağılımından alt örnek çeker.
-    drift=True olduğunda gelir ve aylık ücret dağılımlarında kayma simüle edilir.
+    Egitim bolumunden bagimsiz ayri havuzdan uretim veri seti uretir.
+    drift=True oldugunda gelir ve aylik ucret dagilimlarinda kayma simule edilir.
     """
-    full_ref = generate_training_data(n_samples=5000, random_state=42)
+    pop = _base_population(n_total=10000, seed=42)
+    _, prod_pool = train_test_split(pop, test_size=0.4, random_state=42, stratify=pop["memnun"])
     rng = np.random.default_rng(random_state)
-
-    replace = n_samples > len(full_ref)
-    idx = rng.choice(len(full_ref), size=n_samples, replace=replace)
-    df = full_ref.iloc[idx].reset_index(drop=True).copy()
+    replace = n_samples > len(prod_pool)
+    idx = rng.choice(len(prod_pool), size=n_samples, replace=replace)
+    df = prod_pool.iloc[idx].reset_index(drop=True).copy()
 
     if drift:
         df["gelir"] = df["gelir"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)

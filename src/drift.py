@@ -1,17 +1,19 @@
 """
-ModelWatch - Veri Kayması (Data Drift) Analiz Modülü
-Referans veri ile üretim verisi arasındaki dağılım değişimini Evidently 0.7.23 ile ölçer.
+ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu
+Referans veri ile uretim verisi arasindaki dagilim degisimini Evidently 0.7.23 ile olcer.
 """
 from datetime import datetime, timezone
 from pathlib import Path
+import warnings
 import pandas as pd
 
-try:
-    from evidently.report import Report
-    from evidently.metric_preset import DataDriftPreset
-except ImportError:
-    from evidently import Report
-    from evidently.presets import DataDriftPreset
+from evidently import Report
+from evidently.metrics import DriftedColumnsCount, ValueDrift
+from evidently.presets import DataDriftPreset
+
+MIN_RECOMMENDED_ROWS = 100
+DEFAULT_WASSERSTEIN_THRESHOLD = 0.1
+DEFAULT_DRIFT_SHARE_THRESHOLD = 0.5
 
 
 def run_drift_analysis(
@@ -20,24 +22,50 @@ def run_drift_analysis(
     output_dir: str = "reports",
     save_html: bool = True,
     report_tag: str = "run",
+    wasserstein_threshold: float = DEFAULT_WASSERSTEIN_THRESHOLD,
+    drift_share_threshold: float = DEFAULT_DRIFT_SHARE_THRESHOLD,
 ) -> dict:
-    """
-    Referans ve güncel veri setleri arasında data drift raporu üretir.
-    Hedef sütun ('memnun') varsa özellik karşılaştırmasından hariç tutulur.
-    """
-    drop_cols = [
-        col
-        for col in ["memnun"]
-        if col in reference_df.columns or col in current_df.columns
-    ]
-    ref_features = reference_df.drop(
-        columns=[c for c in drop_cols if c in reference_df.columns]
-    )
-    curr_features = current_df.drop(
-        columns=[c for c in drop_cols if c in current_df.columns]
-    )
+    """Referans ve guncel veri setleri arasinda drift analizi yapar."""
+    if reference_df.empty or current_df.empty:
+        raise ValueError("Referans ve guncel veri setleri bos olamaz.")
 
-    report = Report(metrics=[DataDriftPreset()])
+    sample_warning = None
+    if len(reference_df) < MIN_RECOMMENDED_ROWS or len(current_df) < MIN_RECOMMENDED_ROWS:
+        sample_warning = (
+            f"Kucuk orneklem boyutu (ref={len(reference_df)}, curr={len(current_df)}); "
+            f"onerilen alt sinir {MIN_RECOMMENDED_ROWS}."
+        )
+        warnings.warn(sample_warning, UserWarning, stacklevel=2)
+
+    drop_cols = [col for col in ["memnun"] if col in reference_df.columns or col in current_df.columns]
+    ref_features = reference_df.drop(columns=[c for c in drop_cols if c in reference_df.columns])
+    curr_features = current_df.drop(columns=[c for c in drop_cols if c in current_df.columns])
+
+    if list(ref_features.columns) != list(curr_features.columns):
+        missing_in_curr = set(ref_features.columns) - set(curr_features.columns)
+        if missing_in_curr:
+            raise ValueError(f"Guncel veride eksik ozellik sutunlari: {sorted(missing_in_curr)}")
+        curr_features = curr_features[ref_features.columns]
+
+    numeric_cols = [
+        col for col in ref_features.columns if pd.api.types.is_numeric_dtype(ref_features[col])
+    ]
+    wasserstein_metrics = [
+        ValueDrift(
+            column=col,
+            method="wasserstein",
+            threshold=wasserstein_threshold,
+        )
+        for col in numeric_cols
+    ]
+
+    report = Report(
+        metrics=[
+            DataDriftPreset(),
+            DriftedColumnsCount(drift_share=drift_share_threshold),
+            *wasserstein_metrics,
+        ]
+    )
     snapshot = report.run(reference_data=ref_features, current_data=curr_features)
 
     snap_dict = snapshot.dict() if hasattr(snapshot, "dict") else {}
@@ -46,8 +74,7 @@ def run_drift_analysis(
     drift_share = None
     drifted_columns_count = None
     dataset_drift = None
-    drift_share_threshold = 0.5
-    column_drifts = {}
+    column_drifts: dict[str, dict] = {}
 
     for metric in metrics_list:
         if not isinstance(metric, dict):
@@ -57,41 +84,34 @@ def run_drift_analysis(
         config = metric.get("config", {}) or {}
         value = metric.get("value")
 
-        if "DriftedColumnsCount" in metric_name and isinstance(value, dict):
-            drift_share_threshold = float(config.get("drift_share", 0.5))
+        if metric_name.startswith("DriftedColumnsCount") and isinstance(value, dict):
             if value.get("count") is not None:
                 drifted_columns_count = int(float(value["count"]))
             if value.get("share") is not None:
                 drift_share = float(value["share"])
-            if drift_share is not None:
-                dataset_drift = bool(drift_share >= drift_share_threshold)
 
-        elif "ValueDrift" in metric_name and isinstance(config, dict):
+        elif metric_name.startswith("ValueDrift") and isinstance(config, dict):
             col_name = config.get("column")
-            threshold = float(config.get("threshold", 0.1))
-            stattest_name = str(config.get("method", ""))
+            threshold = float(config.get("threshold", wasserstein_threshold))
+            stattest_name = str(config.get("method", "wasserstein"))
             if col_name is not None and value is not None:
                 score = float(value)
-                # p_value testlerinde düşük skor (< threshold), mesafe testlerinde yüksek skor (>= threshold) drift gösterir
-                if "p_value" in stattest_name.lower():
-                    detected = score < threshold
-                else:
-                    detected = score >= threshold
-
-                column_drifts[str(col_name)] = {
-                    "drift_detected": bool(detected),
-                    "drift_score": round(score, 6),
-                    "stattest_name": stattest_name,
-                }
+                is_pvalue = "p_value" in stattest_name.lower() or "k-s" in stattest_name.lower()
+                detected = (score < threshold) if is_pvalue else (score >= threshold)
+                # Acik ekledigimiz wasserstein metrigi oncelikli olsun
+                if str(col_name) not in column_drifts or "wasserstein" in stattest_name.lower():
+                    column_drifts[str(col_name)] = {
+                        "drift_detected": bool(detected),
+                        "drift_score": round(score, 6),
+                        "stattest_name": stattest_name,
+                    }
 
     if drifted_columns_count is None and column_drifts:
-        drifted_columns_count = sum(
-            1 for info in column_drifts.values() if info["drift_detected"]
-        )
+        drifted_columns_count = sum(1 for info in column_drifts.values() if info["drift_detected"])
     if drift_share is None and drifted_columns_count is not None and len(ref_features.columns) > 0:
         drift_share = drifted_columns_count / len(ref_features.columns)
-    if dataset_drift is None and drift_share is not None:
-        dataset_drift = bool(drift_share >= drift_share_threshold)
+    if drift_share is not None:
+        dataset_drift = bool(float(drift_share) >= float(drift_share_threshold))
 
     html_report_path = None
     if save_html and hasattr(snapshot, "save_html"):
@@ -108,9 +128,10 @@ def run_drift_analysis(
         "reference_rows": len(ref_features),
         "current_rows": len(curr_features),
         "dataset_drift": dataset_drift,
-        "drift_share": round(drift_share, 4) if drift_share is not None else None,
+        "drift_share": round(float(drift_share), 4) if drift_share is not None else None,
         "drifted_columns_count": drifted_columns_count,
         "total_columns": len(ref_features.columns),
         "column_drifts": column_drifts,
         "html_report_path": html_report_path,
+        "warning": sample_warning,
     }

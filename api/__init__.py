@@ -1,0 +1,1 @@
+"""ModelWatch FastAPI service package."""
