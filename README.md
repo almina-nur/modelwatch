@@ -11,39 +11,20 @@ ModelWatch; kayıtlı `@staging` modeli üzerinden özellik dağılım kaymalar�
 ## Mimari Akış
 
 ```mermaid
-flowchart TB
-    subgraph TRAIN["1. Eğitim & Model Kayıt Hattı"]
-        direction LR
-        DL["src/data_loader.py<br/>Referans & Üretim Verisi"] --> TR["src/train.py<br/>RandomForestClassifier Eğitimi"]
-        TR --> MLF[("MLflow Registry<br/>sqlite:///mlflow.db<br/>@staging")]
+flowchart LR
+    subgraph Eğitim
+        DL[data_loader.py] --> TR[train.py] --> MLF[(MLflow @staging)]
     end
 
-    subgraph API["2. FastAPI Çıkarım & İzleme Servisi (api/main.py)"]
-        direction TB
-        PRED["POST /predict"] --> STG["@staging Model"] --> OUT["Tahmin Yanıtı"]
-
-        MON["POST /monitor/run"] --> DRF["src/drift.py<br/>Evidently (Wasserstein)"]
-        MON --> PERF["src/monitor.py<br/>MLflow Metrikleri"]
-
-        DRF --> ALR["src/alerts.py<br/>OK / WARNING / CRITICAL"]
-        PERF --> ALR
-
-        DRF --> STO[("src/storage.py<br/>SQLite Geçmişi")]
-        PERF --> STO
-        ALR --> STO
-
-        HIST["GET /monitor/history"] --> STO
+    subgraph FastAPI Servisi
+        PR["POST /predict"] --> MLF --> OUT[Tahmin]
+        MR["POST /monitor/run"] --> DR[drift.py] & MN[monitor.py] --> AL[alerts.py] --> DB[(SQLite)]
+        HR["GET /monitor/history"] --> DB
     end
 
-    subgraph CI["3. Sürekli Entegrasyon & Test (.github/workflows/ci.yml)"]
-        direction LR
-        CITR["python -m src.train"] --> CIPY["pytest -v<br/>tests/test_pipeline.py"]
+    subgraph CI
+        CT[train] --> PT[pytest -v]
     end
-
-    MLF -. "Model Yükleme" .-> STG
-    MLF -. "Değerlendirme" .-> PERF
-    API -. "Uç Nokta & Entegrasyon Testleri" .-> CIPY
-```
 
 ---
 
