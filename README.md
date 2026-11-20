@@ -7,6 +7,7 @@
 ModelWatch; kayıtlı `@staging` modeli üzerinden özellik dağılım kaymalarını (Wasserstein mesafesi) ve sınıflandırma metriklerini izler, kural tabanlı alarm seviyeleri (`OK`, `WARNING`, `CRITICAL`) üretir, izleme koşularını SQLite üzerinde saklar ve REST API uçları sunar.
 
 ---
+
 ## Mimari Akış
 
 ```mermaid
@@ -42,48 +43,7 @@ flowchart TB
     MLF -. "Model Yükleme" .-> STG
     MLF -. "Değerlendirme" .-> PERF
     API -. "Uç Nokta & Entegrasyon Testleri" .-> CIPY
-
----
-
-### Alternatif: Hizalaması Düzeltilmiş Klasik Şema (Mermaid İstemezsen)
-
-Eğer GitHub dışında veya Markdown editöründe karakter kayması olmadan düz metin şema tercih edersen bunu kullanabilirsin:
-
-```markdown
-## Mimari Akış
-
-```text
-+-----------------------------------------------------------------------+
-|                    1. Eğitim & Model Kayıt Hattı                      |
-|                                                                       |
-|  src/data_loader.py ───► src/train.py ───► MLflow Registry (@staging)|
-|  (Veri Üretimi)          (RF Eğitimi)       (sqlite:///mlflow.db)     |
-+-----------------------------------------------------------------------+
-                                    │
-                       Model & Metrik Erişimi
-                                    ▼
-+-----------------------------------------------------------------------+
-|                2. FastAPI Çıkarım & İzleme Servisi                   |
-|                           (api/main.py)                               |
-|                                                                       |
-|  POST /predict ────────► @staging Model ────────► Tahmin Çıktısı      |
-|                                                                       |
-|  POST /monitor/run ─┬──► src/drift.py (Evidently) ────┐              |
-|                     └──► src/monitor.py (Performans) ─┼──► alerts.py |
-|                                                         │      │      |
-|                                                         ▼      ▼      |
-|                                                     src/storage.py    |
-|                                                (modelwatch_history.db)|
-|                                                         ▲             |
-|  GET /monitor/history ──────────────────────────────────┘             |
-+-----------------------------------------------------------------------+
-                                    │
-                                    ▼
-+-----------------------------------------------------------------------+
-|               3. Otomatik Test & CI (.github/workflows/ci.yml)        |
-|                                                                       |
-|  python -m src.train ───► pytest -v (tests/test_pipeline.py)         |
-+-----------------------------------------------------------------------+
+```
 
 ---
 
@@ -129,7 +89,7 @@ modelwatch/
 ### 1. Bağımlılıkları Kurun
 
 ```bash
-git clone [https://github.com/almina-nur/modelwatch.git](https://github.com/almina-nur/modelwatch.git)
+git clone https://github.com/almina-nur/modelwatch.git
 cd modelwatch
 python -m venv .venv
 source .venv/bin/activate  # Windows PowerShell için: .venv\Scripts\Activate.ps1
