@@ -12,19 +12,20 @@ ModelWatch; kayıtlı `@staging` modeli üzerinden özellik dağılım kaymalar�
 
 ```mermaid
 flowchart LR
-    subgraph Eğitim
+    subgraph TRAIN["Eğitim"]
         DL[data_loader.py] --> TR[train.py] --> MLF[(MLflow @staging)]
     end
 
-    subgraph FastAPI Servisi
+    subgraph API["FastAPI Servisi"]
         PR["POST /predict"] --> MLF --> OUT[Tahmin]
         MR["POST /monitor/run"] --> DR[drift.py] & MN[monitor.py] --> AL[alerts.py] --> DB[(SQLite)]
         HR["GET /monitor/history"] --> DB
     end
 
-    subgraph CI
+    subgraph CI["CI"]
         CT[train] --> PT[pytest -v]
     end
+```
 
 ---
 
