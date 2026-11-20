@@ -12,7 +12,7 @@ from evidently import Report
 from evidently.metrics import DriftedColumnsCount, ValueDrift
 from evidently.presets import DataDriftPreset
 
-MIN_RECOMMENDED_ROWS = 100
+MIN_RECOMMENDED_ROWS = 250
 DEFAULT_WASSERSTEIN_THRESHOLD = 0.1
 DEFAULT_DRIFT_SHARE_THRESHOLD = 0.5
 
@@ -37,7 +37,7 @@ def run_drift_analysis(
     ):
         sample_warning = (
             f"Küçük örneklem boyutu (ref={len(reference_df)}, curr={len(current_df)}); "
-            f"önerilen alt sınır {MIN_RECOMMENDED_ROWS}."
+            f"önerilen alt sınır {MIN_RECOMMENDED_ROWS} (düşük n değerlerinde kayma skoru gürültülü olabilir)."
         )
         warnings.warn(sample_warning, UserWarning, stacklevel=2)
 

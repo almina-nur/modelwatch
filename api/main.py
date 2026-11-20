@@ -9,7 +9,7 @@ from pathlib import Path
 
 import mlflow
 import pandas as pd
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from mlflow.client import MlflowClient
 from mlflow.exceptions import MlflowException
@@ -39,7 +39,20 @@ def _history_db_path() -> str:
     return os.getenv("MODELWATCH_HISTORY_DB", "data/modelwatch_history.db")
 
 
-app = FastAPI(title="ModelWatch API", version="1.3.0")
+def _expected_api_key() -> str:
+    return os.getenv("MODELWATCH_API_KEY", "").strip()
+
+
+def _verify_monitor_api_key(x_api_key: str | None) -> None:
+    expected = _expected_api_key()
+    if expected and x_api_key != expected:
+        raise HTTPException(
+            status_code=401,
+            detail="Geçersiz veya eksik X-API-Key başlığı.",
+        )
+
+
+app = FastAPI(title="ModelWatch API", version="1.4.0")
 
 _model_cache: dict[tuple[str, str, str], object] = {}
 _baseline_cache: dict[tuple[str, str, str], tuple[pd.DataFrame, dict]] = {}
@@ -140,12 +153,16 @@ class CustomerFeatures(BaseModel):
     memnuniyet_skoru: float
 
 
+class CustomerMonitoringRecord(CustomerFeatures):
+    memnun: int | None = Field(default=None, ge=0, le=1)
+
+
 class MonitoringRequest(BaseModel):
     n_samples: int = Field(default=1000, ge=50, le=20000)
     drift: bool = False
     random_state: int = 101
     save_html: bool = False
-    records: list[dict] | None = Field(
+    records: list[CustomerMonitoringRecord] | None = Field(
         default=None,
         description="Verilirse simülasyon yerine bu gerçek/dış veri kayıtları izlenir.",
     )
@@ -185,13 +202,24 @@ def predict(payload: CustomerFeatures):
 
 
 @app.post("/monitor/run")
-def run_full_monitoring(req: MonitoringRequest, background_tasks: BackgroundTasks):
+def run_full_monitoring(
+    req: MonitoringRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _verify_monitor_api_key(x_api_key)
     ref_df, baseline_metrics = _load_reference_and_baseline()
 
     if req.records is not None:
         if len(req.records) == 0:
             raise HTTPException(status_code=422, detail="'records' listesi boş olamaz.")
-        curr_df = pd.DataFrame(req.records)
+        rows = [
+            item.model_dump(exclude_none=True)
+            if item.memnun is None
+            else item.model_dump()
+            for item in req.records
+        ]
+        curr_df = pd.DataFrame(rows)
         tag = req.report_tag or "live_batch"
     else:
         curr_df = generate_production_data(

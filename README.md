@@ -35,6 +35,7 @@ flowchart LR
 | `MODELWATCH_MODEL_ALIAS` | `staging` | Kullanılacak model alias'ı |
 | `MODELWATCH_HISTORY_DB` | `data/modelwatch_history.db` | SQLite geçmiş veritabanı yolu |
 | `MODELWATCH_WEBHOOK_URL` | *(opsiyonel)* | Alarm webhook hedef URL'si |
+| `MODELWATCH_API_KEY` | *(opsiyonel)* | Tanımlıysa `/monitor/run` için `X-API-Key` kontrolü |
 
 ## API Uç Noktaları
 
@@ -45,10 +46,49 @@ flowchart LR
 | `POST` | `/monitor/run` | Drift analizi, model izleme, alarm üretimi, bildirim ve SQLite kaydı |
 | `GET` | `/monitor/history?limit=10` | SQLite veritabanından son izleme koşularını getirir |
 
+### Örnek `/predict` İsteği
+
+```bash
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "yas": 0.4,
+    "gelir": 1.2,
+    "abonelik_suresi": -0.3,
+    "aylik_ucret": 0.8,
+    "destek_talebi_sayisi": -0.5,
+    "son_etkilesim_gun": 0.1,
+    "kullanilan_hizmet": 0.6,
+    "memnuniyet_skoru": 1.1
+  }'
+```
+
+### Örnek `/monitor/run` İsteği
+
+```bash
+curl -X POST "http://localhost:8000/monitor/run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "n_samples": 1000,
+    "drift": true,
+    "random_state": 7,
+    "save_html": false
+  }'
+```
+
+## Kurulum, Test ve Docker
+
+```bash
+pip install -e '.[dev]'
+python -m src.train
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+ruff check src api tests && ruff format --check src api tests && pytest
+```
+
 ## Mühendislik Notları ve Sınırlamalar
 
-- **Bağımlılık Sabitleme (`pandas<3.0`, `mlflow>=3.0`):** `evidently==0.7.23` ile `pandas` 2.x uyumluluğu ve MLflow 3 registry alias akışı korunur; tek bağımlılık kaynağı `pyproject.toml` dosyasıdır.
-- **Küçük Örneklem Hassasiyeti:** Düşük `n_samples` değerlerinde Wasserstein mesafesi örnekleme varyansı nedeniyle kayma eşiğini daha sık geçebilir.
-- **Yerel Kalıcılık ve Güvenlik:** SQLite yerel geliştirme içindir; üretim ortamlarında PostgreSQL ve kimlik doğrulama eklenmelidir.
+- **Tek Bağımlılık Kaynağı (`pyproject.toml`):** `mlflow>=3.0`, `pandas<3.0` ve `evidently==0.7.23` sürümleri tek kaynakta tanımlanır; test kapsamı `pytest-cov` ile raporlanır.
+- **Küçük Örneklem Hassasiyeti:** `MIN_RECOMMENDED_ROWS = 250` altındaki örneklemlerde uyarı üretilir; düşük `n_samples` değerlerinde Wasserstein mesafesi gürültülü olabilir.
+- **Yerel Kalıcılık ve Güvenlik:** SQLite ve opsiyonel `MODELWATCH_API_KEY` yerel geliştirme ve portfolyo gösterimleri içindir; üretim ortamlarında PostgreSQL ve kapsamlı kimlik doğrulama kullanılmalıdır.
 
 Örnek izleme çıktısı için `docs/sample_monitoring_run.json` ve lisans için [MIT Lisansı](./LICENSE) dosyasına bakabilirsiniz.

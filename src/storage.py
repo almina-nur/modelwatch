@@ -5,6 +5,7 @@ Her izleme koşusunu SQLite veritabanına kaydeder ve geçmiş kayıtları sorgu
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,29 +16,28 @@ def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
     """İzleme geçmişi tablosunu oluşturur."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(str(path)) as conn:
+    with closing(sqlite3.connect(str(path))) as conn, conn:
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS monitoring_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at_utc TEXT NOT NULL,
-                report_tag TEXT,
-                n_samples INTEGER,
-                dataset_drift INTEGER,
-                drift_share REAL,
-                drifted_columns_json TEXT,
-                accuracy REAL,
-                f1 REAL,
-                precision_score REAL,
-                recall_score REAL,
-                positive_rate REAL,
-                alert_status TEXT NOT NULL,
-                alert_count INTEGER NOT NULL,
-                alerts_json TEXT
-            )
-            """
+                CREATE TABLE IF NOT EXISTS monitoring_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at_utc TEXT NOT NULL,
+                    report_tag TEXT,
+                    n_samples INTEGER,
+                    dataset_drift INTEGER,
+                    drift_share REAL,
+                    drifted_columns_json TEXT,
+                    accuracy REAL,
+                    f1 REAL,
+                    precision_score REAL,
+                    recall_score REAL,
+                    positive_rate REAL,
+                    alert_status TEXT NOT NULL,
+                    alert_count INTEGER NOT NULL,
+                    alerts_json TEXT
+                )
+                """
         )
-        conn.commit()
 
 
 def save_monitoring_run(
@@ -81,18 +81,17 @@ def save_monitoring_run(
         json.dumps((alert_result or {}).get("alerts") or [], ensure_ascii=False),
     )
 
-    with sqlite3.connect(str(Path(db_path))) as conn:
+    with closing(sqlite3.connect(str(Path(db_path)))) as conn, conn:
         cursor = conn.execute(
             """
-            INSERT INTO monitoring_runs (
-                created_at_utc, report_tag, n_samples, dataset_drift, drift_share,
-                drifted_columns_json, accuracy, f1, precision_score, recall_score,
-                positive_rate, alert_status, alert_count, alerts_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                INSERT INTO monitoring_runs (
+                    created_at_utc, report_tag, n_samples, dataset_drift, drift_share,
+                    drifted_columns_json, accuracy, f1, precision_score, recall_score,
+                    positive_rate, alert_status, alert_count, alerts_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
             row,
         )
-        conn.commit()
         return int(cursor.lastrowid)
 
 
@@ -104,7 +103,7 @@ def get_monitoring_history(
     init_db(db_path)
     safe_limit = max(1, min(int(limit), 200))
 
-    with sqlite3.connect(str(Path(db_path))) as conn:
+    with closing(sqlite3.connect(str(Path(db_path)))) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """

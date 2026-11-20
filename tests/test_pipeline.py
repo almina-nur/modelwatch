@@ -26,6 +26,7 @@ def isolated_env(tmp_path, monkeypatch):
     history_db = str(tmp_path / "history.db")
     monkeypatch.setenv("MLFLOW_TRACKING_URI", tracking_uri)
     monkeypatch.setenv("MODELWATCH_HISTORY_DB", history_db)
+    monkeypatch.delenv("MODELWATCH_API_KEY", raising=False)
     api_main._model_cache.clear()
     api_main._baseline_cache.clear()
     return {
@@ -61,7 +62,7 @@ def test_train_and_production_pools_do_not_overlap():
     assert len(train_tuples & prod_tuples) == 0
 
 
-def test_drift_detection_no_drift_vs_drifted(tmp_path):
+def test_drift_detection_no_drift_vs_drifted_and_small_sample(tmp_path):
     ref_df = generate_training_data(n_samples=2000, random_state=42)
     clean_df = generate_production_data(n_samples=800, drift=False, random_state=101)
     drifted_df = generate_production_data(n_samples=800, drift=True, random_state=101)
@@ -85,6 +86,16 @@ def test_drift_detection_no_drift_vs_drifted(tmp_path):
     assert res_drift["column_drifts"]["gelir"]["drift_detected"] is True
     assert res_drift["column_drifts"]["aylik_ucret"]["drift_detected"] is True
     assert res_drift["drift_share"] > res_clean["drift_share"]
+    small_curr = generate_production_data(n_samples=80, drift=False, random_state=101)
+    with pytest.warns(UserWarning):
+        res_small = run_drift_analysis(
+            ref_df,
+            small_curr,
+            output_dir=str(tmp_path),
+            save_html=False,
+            report_tag="small",
+        )
+    assert res_small["warning"] is not None
 
 
 def test_monitor_labeled_and_unlabeled(isolated_env):
@@ -222,7 +233,7 @@ def test_storage_roundtrip(tmp_path):
     assert history[0]["alert_status"] == "WARNING"
 
 
-def test_fastapi_endpoints_and_negative_cases(isolated_env, monkeypatch):
+def test_fastapi_endpoints_auth_and_negative_cases(isolated_env, monkeypatch):
     from src.train import train_and_register_model
 
     monkeypatch.setenv(
@@ -266,12 +277,24 @@ def test_fastapi_endpoints_and_negative_cases(isolated_env, monkeypatch):
     empty_records_resp = client.post("/monitor/run", json={"records": []})
     assert empty_records_resp.status_code == 422
 
+    bad_schema_resp = client.post(
+        "/monitor/run", json={"records": [{"yas": "gecersiz"}]}
+    )
+    assert bad_schema_resp.status_code == 422
+
+    monkeypatch.setenv("MODELWATCH_API_KEY", "secret-key")
+    unauthorized_resp = client.post(
+        "/monitor/run", json={"n_samples": 300, "drift": False}
+    )
+    assert unauthorized_resp.status_code == 401
+
     live_records = generate_production_data(
-        n_samples=120, drift=True, random_state=101
+        n_samples=300, drift=True, random_state=101
     ).to_dict(orient="records")
     live_resp = client.post(
         "/monitor/run",
         json={"records": live_records, "save_html": False, "report_tag": "live_test"},
+        headers={"X-API-Key": "secret-key"},
     )
     assert live_resp.status_code == 200
     body = live_resp.json()
