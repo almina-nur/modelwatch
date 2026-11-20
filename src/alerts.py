@@ -12,12 +12,19 @@ class AlertThresholds:
     drift_share_warning: float = 0.20
     drift_share_critical: float = 0.50
     max_relative_metric_drop: float = 0.05  # Baseline'a gore %5 bagil dusus
-    fallback_min_f1: float = 0.90
-    fallback_min_accuracy: float = 0.90
     max_positive_rate_shift: float = 0.15
 
 
 DEFAULT_THRESHOLDS = AlertThresholds()
+
+
+def _pick_metric(source: dict | None, keys: tuple[str, ...]) -> float | None:
+    if not isinstance(source, dict):
+        return None
+    for key in keys:
+        if key in source and source[key] is not None:
+            return float(source[key])
+    return None
 
 
 def generate_alerts(
@@ -30,8 +37,8 @@ def generate_alerts(
     """Drift, performans veya tahmin dagilimi kaymalarina gore alarm listesi uretir."""
     alerts: list[dict] = []
 
-    drift_share = drift_result.get("drift_share")
-    column_drifts = drift_result.get("column_drifts") or {}
+    drift_share = (drift_result or {}).get("drift_share")
+    column_drifts = (drift_result or {}).get("column_drifts") or {}
     drifted_cols = [
         col for col, info in column_drifts.items() if info.get("drift_detected")
     ]
@@ -67,35 +74,23 @@ def generate_alerts(
         metrics = monitoring_result.get("metrics")
 
         if isinstance(metrics, dict):
-            f1_val = metrics.get("f1")
-            acc_val = metrics.get("accuracy")
-            base_f1 = (baseline_metrics or {}).get("val_f1") or (
-                baseline_metrics or {}
-            ).get("f1")
-            base_acc = (baseline_metrics or {}).get("val_accuracy") or (
-                baseline_metrics or {}
-            ).get("accuracy")
+            f1_val = _pick_metric(metrics, ("f1",))
+            acc_val = _pick_metric(metrics, ("accuracy",))
+            base_f1 = _pick_metric(baseline_metrics, ("val_f1", "f1"))
+            base_acc = _pick_metric(baseline_metrics, ("val_accuracy", "accuracy"))
 
-            # F1 ve Accuracy ayni anda bozulduysa tek performans bozulmasi olarak raporla
+            # Referans metrik yoksa performans alarmi uretilmez
             f1_bad = False
             acc_bad = False
 
-            if f1_val is not None:
-                f1_floor = (
-                    float(base_f1) * (1.0 - thresholds.max_relative_metric_drop)
-                    if base_f1 is not None
-                    else thresholds.fallback_min_f1
-                )
-                if float(f1_val) < f1_floor:
+            if f1_val is not None and base_f1 is not None:
+                f1_floor = base_f1 * (1.0 - thresholds.max_relative_metric_drop)
+                if f1_val < f1_floor:
                     f1_bad = True
 
-            if acc_val is not None:
-                acc_floor = (
-                    float(base_acc) * (1.0 - thresholds.max_relative_metric_drop)
-                    if base_acc is not None
-                    else thresholds.fallback_min_accuracy
-                )
-                if float(acc_val) < acc_floor:
+            if acc_val is not None and base_acc is not None:
+                acc_floor = base_acc * (1.0 - thresholds.max_relative_metric_drop)
+                if acc_val < acc_floor:
                     acc_bad = True
 
             if f1_bad and acc_bad:
@@ -104,8 +99,9 @@ def generate_alerts(
                         "severity": "CRITICAL",
                         "code": "MODEL_PERFORMANCE_DEGRADATION",
                         "message": (
-                            f"Model F1 ({float(f1_val):.4f}) ve accuracy ({float(acc_val):.4f}) "
-                            "beklenen esiklerin altina dustu."
+                            f"Model F1 ({f1_val:.4f} vs base {base_f1:.4f}) ve "
+                            f"accuracy ({acc_val:.4f} vs base {base_acc:.4f}) "
+                            "referans esiklerin altina dustu."
                         ),
                     }
                 )
@@ -114,7 +110,10 @@ def generate_alerts(
                     {
                         "severity": "CRITICAL",
                         "code": "MODEL_F1_DROP",
-                        "message": f"Model F1 skoru beklenen esigin altinda: f1={float(f1_val):.4f}.",
+                        "message": (
+                            f"Model F1 skoru referans esigin altinda: "
+                            f"f1={f1_val:.4f} (base={base_f1:.4f})."
+                        ),
                     }
                 )
             elif acc_bad:
@@ -122,7 +121,10 @@ def generate_alerts(
                     {
                         "severity": "WARNING",
                         "code": "MODEL_ACCURACY_DROP",
-                        "message": f"Model accuracy skoru beklenen esigin altinda: accuracy={float(acc_val):.4f}.",
+                        "message": (
+                            f"Model accuracy skoru referans esigin altinda: "
+                            f"accuracy={acc_val:.4f} (base={base_acc:.4f})."
+                        ),
                     }
                 )
         else:
@@ -150,7 +152,7 @@ def generate_alerts(
 
     return {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "report_tag": drift_result.get("report_tag", "run"),
+        "report_tag": (drift_result or {}).get("report_tag", "run"),
         "status": highest_severity,
         "alert_count": len(alerts),
         "drifted_columns": drifted_cols,

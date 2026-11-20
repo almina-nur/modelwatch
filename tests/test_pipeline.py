@@ -347,3 +347,340 @@ def test_webhook_notification_unreachable_error():
     assert res["webhook_configured"] is True
     assert res["webhook_sent"] is False
     assert res["webhook_error"] is not None
+
+
+def test_health_live_ready_and_prod_api_key_guard(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    client = TestClient(app)
+    live_resp = client.get("/health/live")
+    assert live_resp.status_code == 200
+    assert live_resp.json()["status"] == "alive"
+
+    monkeypatch.setenv("MODELWATCH_ENV", "production")
+    monkeypatch.delenv("MODELWATCH_API_KEY", raising=False)
+    prod_resp = client.post(
+        "/monitor/run",
+        json={"n_samples": 100, "drift": False},
+    )
+    assert prod_resp.status_code == 503
+
+
+def test_reject_nan_in_predict_endpoint():
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    client = TestClient(app)
+    raw_body = json.dumps(
+        {
+            "yas": float("nan"),
+            "gelir": 25000.0,
+            "abonelik_suresi": 12.0,
+            "aylik_ucret": 500.0,
+            "destek_talebi_sayisi": 1.0,
+            "son_etkilesim_gun": 5.0,
+            "kullanilan_hizmet": 3.0,
+            "memnuniyet_skoru": 4.0,
+        },
+        allow_nan=True,
+    )
+    resp = client.post(
+        "/predict",
+        content=raw_body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code in (422, 503)
+
+
+def test_no_performance_alert_when_baseline_missing():
+    from src.alerts import generate_alerts
+
+    drift_res = {"drift_share": 0.0, "column_drifts": {}, "report_tag": "no_base"}
+    mon_res = {"metrics": {"f1": 0.50, "accuracy": 0.55}}
+
+    res = generate_alerts(drift_res, mon_res, baseline_metrics=None)
+    assert res["status"] == "OK"
+    assert res["alert_count"] == 0
+
+
+def test_webhook_rejects_invalid_url_scheme():
+    from src.integrations import emit_alert_notifications
+
+    res = emit_alert_notifications(
+        {"status": "CRITICAL", "alerts": []},
+        webhook_url="file:///tmp/test_webhook.json",
+    )
+    assert res["webhook_configured"] is True
+    assert res["webhook_sent"] is False
+    assert res["webhook_error"] is not None
+
+
+def test_storage_model_metadata_and_legacy_schema_migration(tmp_path):
+    import sqlite3
+
+    from src.storage import get_monitoring_history, init_db, save_monitoring_run
+
+    db_file = tmp_path / "legacy.db"
+    with sqlite3.connect(str(db_file)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE monitoring_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at_utc TEXT NOT NULL,
+                report_tag TEXT,
+                n_samples INTEGER,
+                dataset_drift INTEGER,
+                drift_share REAL,
+                drifted_columns_json TEXT,
+                accuracy REAL,
+                f1 REAL,
+                precision_score REAL,
+                recall_score REAL,
+                positive_rate REAL,
+                alert_status TEXT NOT NULL,
+                alert_count INTEGER NOT NULL,
+                alerts_json TEXT
+            )
+            """
+        )
+        conn.commit()
+
+    init_db(str(db_file))
+    run_id = save_monitoring_run(
+        drift_result={"dataset_drift": False, "drift_share": 0.05, "column_drifts": {}},
+        monitoring_result={
+            "n_samples": 200,
+            "positive_rate": 0.45,
+            "metrics": {"f1": 0.91},
+        },
+        alert_result={"status": "OK", "alert_count": 0, "alerts": []},
+        db_path=str(db_file),
+        model_name="ModelWatch-CustomerSatisfaction",
+        model_alias="staging",
+        model_version="3",
+        baseline_metrics={"val_f1": 0.92},
+    )
+    assert run_id >= 1
+
+    history = get_monitoring_history(limit=5, db_path=str(db_file))
+    assert len(history) == 1
+    assert history[0]["model_version"] == "3"
+    assert history[0]["baseline_metrics"] == {"val_f1": 0.92}
+
+
+def test_storage_corrupt_json_and_non_finite_floats(tmp_path):
+    import math
+    import sqlite3
+
+    from src.storage import get_monitoring_history, init_db, save_monitoring_run
+
+    db_file = tmp_path / "edge_cases.db"
+    init_db(str(db_file))
+
+    run_id = save_monitoring_run(
+        drift_result={
+            "dataset_drift": True,
+            "drift_share": math.nan,
+            "column_drifts": {"feat_a": {"drift_detected": True}},
+        },
+        monitoring_result={
+            "n_samples": 50,
+            "positive_rate": math.inf,
+            "metrics": {"f1": math.nan, "accuracy": 0.88},
+        },
+        alert_result={"status": "WARNING", "alert_count": 1, "alerts": [{"code": "X"}]},
+        db_path=str(db_file),
+    )
+    assert run_id >= 1
+
+    conn = sqlite3.connect(str(db_file))
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE monitoring_runs SET drifted_columns_json = ?, alerts_json = ? WHERE id = ?",
+                ("{not-valid-json", "[broken", run_id),
+            )
+    finally:
+        conn.close()
+
+    history = get_monitoring_history(limit=10, db_path=str(db_file))
+    assert len(history) == 1
+    assert history[0]["drift_share"] is None
+    assert history[0]["positive_rate"] is None
+    assert history[0]["metrics"]["f1"] is None
+    assert history[0]["metrics"]["accuracy"] == 0.88
+    assert history[0]["drifted_columns"] == []
+    assert history[0]["alerts"] == []
+
+
+def test_storage_invalid_types_and_json_type_mismatch(tmp_path):
+    import sqlite3
+
+    from src.storage import get_monitoring_history, init_db, save_monitoring_run
+
+    db_file = tmp_path / "types.db"
+    init_db(str(db_file))
+
+    run_id = save_monitoring_run(
+        drift_result={
+            "dataset_drift": False,
+            "drift_share": "invalid-share",
+            "column_drifts": {},
+        },
+        monitoring_result={
+            "n_samples": 10,
+            "positive_rate": True,
+            "metrics": {"f1": "bad-f1", "accuracy": 0.90},
+        },
+        alert_result={"status": "OK", "alert_count": 0, "alerts": []},
+        db_path=str(db_file),
+    )
+    assert run_id >= 1
+
+    conn = sqlite3.connect(str(db_file))
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE monitoring_runs SET drifted_columns_json = ? WHERE id = ?",
+                ('{"not":"a-list"}', run_id),
+            )
+    finally:
+        conn.close()
+
+    history = get_monitoring_history(limit=5, db_path=str(db_file))
+    assert len(history) == 1
+    assert history[0]["drift_share"] is None
+    assert history[0]["positive_rate"] is None
+    assert history[0]["metrics"]["f1"] is None
+    assert history[0]["drifted_columns"] == []
+
+
+def test_storage_none_and_unserializable_object_handling(tmp_path):
+    import pytest
+
+    from src.storage import _safe_float, _safe_json_dumps, init_db, save_monitoring_run
+
+    assert _safe_float(None) is None
+    assert _safe_float(False) is None
+    with pytest.raises(TypeError):
+        _safe_json_dumps({"bad": object()})
+
+    db_file = tmp_path / "none_check.db"
+    init_db(str(db_file))
+    run_id = save_monitoring_run(
+        drift_result={
+            "dataset_drift": None,
+            "drift_share": None,
+            "column_drifts": None,
+        },
+        monitoring_result={"metrics": None},
+        alert_result=None,
+        db_path=str(db_file),
+    )
+    assert run_id >= 1
+
+
+def test_storage_empty_string_and_non_json_primitive(tmp_path):
+    from src.storage import _safe_float, _safe_json_loads, init_db, save_monitoring_run
+
+    assert _safe_float("") is None
+    assert _safe_json_loads("123", []) == []
+
+    db_file = tmp_path / "minimal.db"
+    init_db(str(db_file))
+    run_id = save_monitoring_run(
+        drift_result={},
+        monitoring_result={},
+        alert_result={},
+        db_path=str(db_file),
+    )
+    assert run_id >= 1
+
+
+def test_emit_alert_notifications_skips_when_webhook_unset(monkeypatch):
+    from src.integrations import emit_alert_notifications
+
+    monkeypatch.delenv("MODELWATCH_WEBHOOK_URL", raising=False)
+    res = emit_alert_notifications(
+        {"status": "WARNING", "alert_count": 1, "alerts": [{"code": "DRIFT"}]},
+        webhook_url=None,
+    )
+    assert res["webhook_configured"] is False
+    assert res["webhook_sent"] is False
+
+
+def test_emit_alert_notifications_empty_env_url(monkeypatch):
+    from src.integrations import emit_alert_notifications
+
+    monkeypatch.setenv("MODELWATCH_WEBHOOK_URL", "")
+    res = emit_alert_notifications(
+        {"status": "OK", "alert_count": 0, "alerts": []},
+    )
+    assert res["webhook_configured"] is False
+    assert res["webhook_sent"] is False
+
+
+def test_history_endpoint_returns_saved_runs(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+    from src.storage import init_db, save_monitoring_run
+
+    db_file = tmp_path / "api_history.db"
+    init_db(str(db_file))
+    save_monitoring_run(
+        drift_result={"dataset_drift": False, "drift_share": 0.0, "column_drifts": {}},
+        monitoring_result={"n_samples": 20, "metrics": {"accuracy": 0.91}},
+        alert_result={"status": "OK", "alert_count": 0, "alerts": []},
+        db_path=str(db_file),
+    )
+
+    monkeypatch.setenv("MODELWATCH_HISTORY_DB", str(db_file))
+    monkeypatch.delenv("MODELWATCH_API_KEY", raising=False)
+    monkeypatch.setenv("MODELWATCH_ENV", "development")
+
+    client = TestClient(app)
+    resp = client.get("/history?limit=5")
+    assert resp.status_code in (200, 404)
+
+
+def test_emit_alert_notifications_handles_invalid_url_without_raising(monkeypatch):
+    from src.integrations import emit_alert_notifications
+
+    monkeypatch.setenv("MODELWATCH_WEBHOOK_URL", "ftp://invalid-scheme.example/hook")
+    res = emit_alert_notifications(
+        {"status": "CRITICAL", "alert_count": 1, "alerts": [{"code": "PERF"}]},
+    )
+    assert isinstance(res, dict)
+    assert res.get("webhook_sent") is False
+
+
+def test_emit_alert_notifications_non_2xx_response(monkeypatch):
+    from urllib import request
+
+    from src.integrations import emit_alert_notifications
+
+    class _DummyResponse:
+        status = 502
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setenv("MODELWATCH_WEBHOOK_URL", "https://hooks.example.test/alert")
+    monkeypatch.setattr(request, "urlopen", lambda req, timeout=5.0: _DummyResponse())
+
+    res = emit_alert_notifications(
+        {"status": "WARNING", "alert_count": 1, "alerts": [{"code": "DRIFT"}]},
+    )
+    assert res["webhook_configured"] is True
+    assert res["webhook_sent"] is False
+    assert res["status_code"] == 502
+    assert res["webhook_error"] == "HTTP 502"

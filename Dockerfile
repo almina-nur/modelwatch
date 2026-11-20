@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MLFLOW_TRACKING_URI=sqlite:////app/mlflow.db \
+    MLFLOW_TRACKING_URI=sqlite:////app/data/mlflow.db \
     MODELWATCH_HISTORY_DB=/app/data/modelwatch_history.db
 
 WORKDIR /app
@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir --upgrade pip \
     && python -m src.train \
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
+
+VOLUME ["/app/data", "/app/reports"]
 
 USER appuser
 

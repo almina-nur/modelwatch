@@ -34,8 +34,8 @@ jobs:
       - name: Train and register staging model
         run: python -m src.train
 
-      - name: Run pytest
-        run: pytest -v
+      - name: Run pytest with coverage threshold
+        run: pytest -v --cov=src --cov=api --cov-fail-under=95
 
       - name: Build Docker image and smoke test /health
         run: |
