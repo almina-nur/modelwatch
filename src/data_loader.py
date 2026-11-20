@@ -1,4 +1,7 @@
-"""ModelWatch - Veri Yukleme ve Simulasyon Modulu."""
+"""
+ModelWatch - Veri Yükleme ve Simülasyon Modülü
+Eğitim/referans verisi ile üretim verisini ayrı bölüm/örneklemle ve veri sızıntısı olmadan üretir.
+"""
 
 import numpy as np
 import pandas as pd
@@ -34,9 +37,10 @@ def _base_population(n_total: int = 10000, seed: int = SPLIT_SEED) -> pd.DataFra
 
 
 def generate_training_data(
-    n_samples: int = 5000, random_state: int = 42
+    n_samples: int = 5000,
+    random_state: int = 42,
 ) -> pd.DataFrame:
-    """Referans / egitim veri setini uretim havuzundan ayri bolum olarak uretir."""
+    """Referans / eğitim veri setini üretim havuzundan ayrı bir bölüm olarak üretir."""
     pop = _base_population(n_total=10000, seed=SPLIT_SEED)
     train_pool, _ = train_test_split(
         pop, test_size=0.4, random_state=SPLIT_SEED, stratify=pop["memnun"]
@@ -48,9 +52,14 @@ def generate_training_data(
 
 
 def generate_production_data(
-    n_samples: int = 1000, drift: bool = False, random_state: int = 101
+    n_samples: int = 1000,
+    drift: bool = False,
+    random_state: int = 101,
 ) -> pd.DataFrame:
-    """Egitim bolumunden bagimsiz ayri havuzdan uretim veri seti uretir."""
+    """
+    Eğitim bölümünden bağımsız ayrı havuzdan üretim veri seti üretir.
+    drift=True olduğunda gelir ve aylık ücret dağılımlarında kayma simüle edilir.
+    """
     pop = _base_population(n_total=10000, seed=SPLIT_SEED)
     _, prod_pool = train_test_split(
         pop, test_size=0.4, random_state=SPLIT_SEED, stratify=pop["memnun"]
@@ -59,9 +68,11 @@ def generate_production_data(
     replace = n_samples > len(prod_pool)
     idx = rng.choice(len(prod_pool), size=n_samples, replace=replace)
     df = prod_pool.iloc[idx].reset_index(drop=True).copy()
+
     if drift:
         df["gelir"] = df["gelir"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
         df["aylik_ucret"] = (
             df["aylik_ucret"] + 1.5 + rng.normal(0.0, 0.15, size=n_samples)
         )
+
     return df

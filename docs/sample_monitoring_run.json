@@ -1,5 +1,5 @@
 {
-  "run_id": 1,
+  "run_id": 2,
   "drift": {
     "timestamp_utc": "2026-11-20T14:00:00+00:00",
     "report_tag": "drifted",
@@ -73,7 +73,7 @@
     "labeled": true
   },
   "alerts": {
-    "timestamp_utc": "2026-11-20T16:55:27.146083+00:00",
+    "timestamp_utc": "2026-11-20T17:18:22.877307+00:00",
     "report_tag": "drifted",
     "status": "WARNING",
     "alert_count": 2,

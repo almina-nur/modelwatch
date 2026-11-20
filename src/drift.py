@@ -1,4 +1,7 @@
-"""ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu."""
+"""
+ModelWatch - Veri Kayması (Data Drift) Analiz Modülü
+Referans veri ile üretim verisi arasındaki dağılım değişimini Evidently 0.7.23 ile ölçer.
+"""
 
 import warnings
 from datetime import datetime, timezone
@@ -23,9 +26,9 @@ def run_drift_analysis(
     wasserstein_threshold: float = DEFAULT_WASSERSTEIN_THRESHOLD,
     drift_share_threshold: float = DEFAULT_DRIFT_SHARE_THRESHOLD,
 ) -> dict:
-    """Referans ve guncel veri setleri arasinda drift analizi yapar."""
+    """Referans ve güncel veri setleri arasında drift analizi yapar."""
     if reference_df.empty or current_df.empty:
-        raise ValueError("Referans ve guncel veri setleri bos olamaz.")
+        raise ValueError("Referans ve güncel veri setleri boş olamaz.")
 
     sample_warning = None
     if (
@@ -33,8 +36,8 @@ def run_drift_analysis(
         or len(current_df) < MIN_RECOMMENDED_ROWS
     ):
         sample_warning = (
-            f"Kucuk orneklem boyutu (ref={len(reference_df)}, curr={len(current_df)}); "
-            f"onerilen alt sinir {MIN_RECOMMENDED_ROWS}."
+            f"Küçük örneklem boyutu (ref={len(reference_df)}, curr={len(current_df)}); "
+            f"önerilen alt sınır {MIN_RECOMMENDED_ROWS}."
         )
         warnings.warn(sample_warning, UserWarning, stacklevel=2)
 
@@ -54,7 +57,7 @@ def run_drift_analysis(
         missing_in_curr = set(ref_features.columns) - set(curr_features.columns)
         if missing_in_curr:
             raise ValueError(
-                f"Guncel veride eksik ozellik sutunlari: {sorted(missing_in_curr)}"
+                f"Güncel veride eksik özellik sütunları: {sorted(missing_in_curr)}"
             )
         curr_features = curr_features[ref_features.columns]
 
@@ -64,9 +67,14 @@ def run_drift_analysis(
         if pd.api.types.is_numeric_dtype(ref_features[col])
     ]
     wasserstein_metrics = [
-        ValueDrift(column=col, method="wasserstein", threshold=wasserstein_threshold)
+        ValueDrift(
+            column=col,
+            method="wasserstein",
+            threshold=wasserstein_threshold,
+        )
         for col in numeric_cols
     ]
+
     report = Report(
         metrics=[
             DataDriftPreset(),
@@ -75,16 +83,20 @@ def run_drift_analysis(
         ]
     )
     snapshot = report.run(reference_data=ref_features, current_data=curr_features)
+
     snap_dict = snapshot.dict() if hasattr(snapshot, "dict") else {}
     metrics_list = snap_dict.get("metrics", [])
+
     column_drifts: dict[str, dict] = {}
 
     for metric in metrics_list:
         if not isinstance(metric, dict):
             continue
+
         metric_name = str(metric.get("metric_name", ""))
         config = metric.get("config", {}) or {}
         value = metric.get("value")
+
         if metric_name.startswith("ValueDrift") and isinstance(config, dict):
             col_name = config.get("column")
             threshold = float(config.get("threshold", wasserstein_threshold))

@@ -1,4 +1,7 @@
-"""ModelWatch - FastAPI Izleme ve Tahmin Servisi."""
+"""
+ModelWatch - FastAPI İzleme ve Tahmin Servisi
+Veri kayması analizi, model izleme, uyarı üretimi, geçmiş kaydı ve tahmin uçları sunar.
+"""
 
 import json
 import os
@@ -37,6 +40,7 @@ def _history_db_path() -> str:
 
 
 app = FastAPI(title="ModelWatch API", version="1.3.0")
+
 _model_cache: dict[tuple[str, str, str], object] = {}
 _baseline_cache: dict[tuple[str, str, str], tuple[pd.DataFrame, dict]] = {}
 
@@ -46,22 +50,25 @@ def _get_model():
     alias = _model_alias()
     uri = _tracking_uri()
     mlflow.set_tracking_uri(uri)
+
     try:
         client = MlflowClient(tracking_uri=uri)
         mv = client.get_model_version_by_alias(name=name, alias=alias)
         cache_key = (uri, name, f"{alias}:v{mv.version}")
     except (MlflowException, OSError, RuntimeError, ValueError):
         cache_key = (uri, name, alias)
+
     if cache_key not in _model_cache:
         try:
             loaded = mlflow.pyfunc.load_model(f"models:/{name}@{alias}")
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"Model '{name}@{alias}' yuklenemedi: {exc}",
+                detail=f"Model '{name}@{alias}' yüklenemedi: {exc}",
             ) from exc
         _model_cache.clear()
         _model_cache[cache_key] = loaded
+
     return _model_cache[cache_key]
 
 
@@ -70,6 +77,7 @@ def _load_reference_and_baseline() -> tuple[pd.DataFrame, dict]:
     alias = _model_alias()
     uri = _tracking_uri()
     mlflow.set_tracking_uri(uri)
+
     version_tag = alias
     run_id: str | None = None
     try:
@@ -79,11 +87,14 @@ def _load_reference_and_baseline() -> tuple[pd.DataFrame, dict]:
         run_id = mv.run_id
     except (MlflowException, OSError, RuntimeError, ValueError):
         pass
+
     cache_key = (uri, name, version_tag)
     if cache_key in _baseline_cache:
         return _baseline_cache[cache_key]
+
     ref_df: pd.DataFrame | None = None
     baseline_metrics: dict = {}
+
     if run_id:
         try:
             client = MlflowClient(tracking_uri=uri)
@@ -91,6 +102,7 @@ def _load_reference_and_baseline() -> tuple[pd.DataFrame, dict]:
             for k in ("val_f1", "val_accuracy", "baseline_positive_rate"):
                 if k in run_data.metrics:
                     baseline_metrics[k] = float(run_data.metrics[k])
+
             local_art_dir = client.download_artifacts(run_id, "reference")
             art_path = Path(local_art_dir)
             csv_file = art_path / "reference_data.csv"
@@ -103,12 +115,15 @@ def _load_reference_and_baseline() -> tuple[pd.DataFrame, dict]:
                     baseline_metrics.update(loaded_m)
         except (MlflowException, OSError, RuntimeError, ValueError):
             pass
+
     if ref_df is None or ref_df.empty:
         ref_df = generate_training_data(n_samples=5000, random_state=42)
+
     if "baseline_positive_rate" not in baseline_metrics and "memnun" in ref_df.columns:
         baseline_metrics["baseline_positive_rate"] = round(
             float(ref_df["memnun"].mean()), 4
         )
+
     _baseline_cache.clear()
     _baseline_cache[cache_key] = (ref_df, baseline_metrics)
     return ref_df, baseline_metrics
@@ -130,7 +145,10 @@ class MonitoringRequest(BaseModel):
     drift: bool = False
     random_state: int = 101
     save_html: bool = False
-    records: list[dict] | None = Field(default=None)
+    records: list[dict] | None = Field(
+        default=None,
+        description="Verilirse simülasyon yerine bu gerçek/dış veri kayıtları izlenir.",
+    )
     report_tag: str | None = None
     baseline_positive_rate: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -144,6 +162,7 @@ def health():
         model_ready = True
     except HTTPException:
         model_ready = False
+
     payload = {
         "status": "ok" if model_ready else "not_ready",
         "model_ready": model_ready,
@@ -168,16 +187,20 @@ def predict(payload: CustomerFeatures):
 @app.post("/monitor/run")
 def run_full_monitoring(req: MonitoringRequest, background_tasks: BackgroundTasks):
     ref_df, baseline_metrics = _load_reference_and_baseline()
+
     if req.records is not None:
         if len(req.records) == 0:
-            raise HTTPException(status_code=422, detail="'records' listesi bos olamaz.")
+            raise HTTPException(status_code=422, detail="'records' listesi boş olamaz.")
         curr_df = pd.DataFrame(req.records)
         tag = req.report_tag or "live_batch"
     else:
         curr_df = generate_production_data(
-            n_samples=req.n_samples, drift=req.drift, random_state=req.random_state
+            n_samples=req.n_samples,
+            drift=req.drift,
+            random_state=req.random_state,
         )
         tag = req.report_tag or ("drifted" if req.drift else "no_drift")
+
     try:
         drift_res = run_drift_analysis(
             reference_df=ref_df,
@@ -194,11 +217,13 @@ def run_full_monitoring(req: MonitoringRequest, background_tasks: BackgroundTask
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     effective_pos_rate = (
         req.baseline_positive_rate
         if req.baseline_positive_rate is not None
         else baseline_metrics.get("baseline_positive_rate")
     )
+
     alert_res = generate_alerts(
         drift_res,
         mon_res,
@@ -206,9 +231,13 @@ def run_full_monitoring(req: MonitoringRequest, background_tasks: BackgroundTask
         baseline_positive_rate=effective_pos_rate,
     )
     run_id = save_monitoring_run(
-        drift_res, mon_res, alert_res, db_path=_history_db_path()
+        drift_res,
+        mon_res,
+        alert_res,
+        db_path=_history_db_path(),
     )
     background_tasks.add_task(emit_alert_notifications, alert_res)
+
     return {
         "run_id": run_id,
         "drift": drift_res,
@@ -220,4 +249,7 @@ def run_full_monitoring(req: MonitoringRequest, background_tasks: BackgroundTask
 @app.get("/monitor/history")
 def monitor_history(limit: int = Query(default=10, ge=1, le=200)):
     items = get_monitoring_history(limit=limit, db_path=_history_db_path())
-    return {"count": len(items), "items": items}
+    return {
+        "count": len(items),
+        "items": items,
+    }

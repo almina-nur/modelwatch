@@ -16,10 +16,15 @@ dependencies = [
     "scikit-learn",
     "mlflow>=3.0",
     "evidently==0.7.23",
+    "urllib3",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx", "ruff"]
+dev = [
+    "pytest",
+    "httpx",
+    "ruff",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
