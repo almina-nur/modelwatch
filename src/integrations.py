@@ -1,8 +1,8 @@
 """ModelWatch - Istege Bagli Uretim Kancalari (Webhook + JSON log)."""
-from datetime import datetime, timezone
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from urllib import request
 from urllib.error import URLError
 

@@ -2,8 +2,9 @@
 ModelWatch - Model Izleme (Model Monitoring) Modulu
 Kayitli MLflow modelini yukleyerek uretim verisindeki tahmin ve performans metriklerini izler.
 """
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
+
 import mlflow
 import numpy as np
 import pandas as pd

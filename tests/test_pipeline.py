@@ -2,14 +2,16 @@
 ModelWatch - Otomatik Test Paketi (pytest)
 Veri simülasyonu, drift analizi, model izleme, alarm kuralları, SQLite geçmişi ve FastAPI uçlarını test eder.
 """
-import numpy as np
-import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 import api.main as api_main
 from src.alerts import generate_alerts
-from src.data_loader import FEATURE_NAMES, generate_production_data, generate_training_data
+from src.data_loader import (
+    FEATURE_NAMES,
+    generate_production_data,
+    generate_training_data,
+)
 from src.drift import run_drift_analysis
 from src.monitor import evaluate_model_monitoring
 from src.storage import get_monitoring_history, save_monitoring_run

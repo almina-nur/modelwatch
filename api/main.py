@@ -3,11 +3,13 @@ ModelWatch - FastAPI Izleme ve Tahmin Servisi
 Veri kaymasi analizi, model izleme, uyari uretimi, gecmis kaydi ve tahmin uclari sunar.
 """
 import os
+
+import mlflow
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
-import mlflow
 from mlflow.client import MlflowClient
+from mlflow.exceptions import MlflowException
+from pydantic import BaseModel, Field
 
 from src.alerts import generate_alerts
 from src.data_loader import generate_production_data, generate_training_data
@@ -47,7 +49,7 @@ def _get_model():
         client = MlflowClient(tracking_uri=uri)
         mv = client.get_model_version_by_alias(name=name, alias=alias)
         cache_key = (uri, name, f"{alias}:v{mv.version}")
-    except Exception:
+    except (MlflowException, OSError, RuntimeError, ValueError):
         cache_key = (uri, name, alias)
 
     if cache_key not in _model_cache:

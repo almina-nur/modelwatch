@@ -3,6 +3,7 @@ ModelWatch - Model Egitim ve MLflow Kayit Modulu
 Referans veri uzerinde RandomForestClassifier egitir ve MLflow Registry'ye kaydeder.
 """
 import os
+
 import mlflow
 from mlflow.client import MlflowClient
 from sklearn.ensemble import RandomForestClassifier

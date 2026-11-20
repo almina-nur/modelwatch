@@ -2,11 +2,11 @@
 ModelWatch - Veri Kaymasi (Data Drift) Analiz Modulu
 Referans veri ile uretim verisi arasindaki dagilim degisimini Evidently 0.7.23 ile olcer.
 """
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-import warnings
-import pandas as pd
 
+import pandas as pd
 from evidently import Report
 from evidently.metrics import DriftedColumnsCount, ValueDrift
 from evidently.presets import DataDriftPreset
